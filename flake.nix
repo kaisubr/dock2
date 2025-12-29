@@ -1,6 +1,6 @@
 
 {
-  description = "minibar";
+  description = "dock2";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -33,7 +33,7 @@
             fi
             source $VENV_DIR/bin/activate
             
-            echo "✅ MiniBar Dev Environment"
+            echo "-- dock2 dev environment --"
             echo "Using SDK: $SDKROOT"
           '';
         };

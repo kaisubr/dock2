@@ -2,14 +2,16 @@
 # Use xcrun to find the swift compiler and sdk path
 SWIFTC = xcrun -sdk macosx swiftc
 FLAGS = -framework AppKit -framework CoreGraphics -framework Foundation
+SOURCES = src/main.swift src/AppDelegate.swift src/TaskbarView.swift src/WindowItem.swift
 
 all: clean build
 
 build:
-	$(SWIFTC) $(FLAGS) -o MiniBar main.swift AppDelegate.swift TaskbarView.swift WindowItem.swift
+	mkdir -p dist
+	$(SWIFTC) $(FLAGS) -o dist/dock2 $(SOURCES)
 
 clean:
-	rm -f MiniBar
+	rm -rf dist
 
 run: build
-	./MiniBar
+	./dist/dock2

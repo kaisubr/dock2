@@ -32,18 +32,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "menubar.dock.rectangle", accessibilityDescription: "MiniBar")
+            button.image = NSImage(systemSymbolName: "menubar.dock.rectangle", accessibilityDescription: "dock2")
         }
         updateMenu()
     }
     
     private func updateMenu() {
         let menu = NSMenu()
-        let toggleTitle = isManuallyHidden ? "Show MiniBar" : "Hide MiniBar"
+        let toggleTitle = isManuallyHidden ? "Show dock2" : "Hide dock2"
         let toggleItem = NSMenuItem(title: toggleTitle, action: #selector(toggleVisibility), keyEquivalent: "h")
         menu.addItem(toggleItem)
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit MiniBar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "Quit dock2", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         statusItem?.menu = menu
     }
     
@@ -136,31 +136,67 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
+    private func activateApp(_ app: NSRunningApplication?) {
+        guard let app = app else { return }
+        if #available(macOS 14.0, *) {
+            app.activate()
+        } else {
+            app.activate(options: .activateIgnoringOtherApps)
+        }
+    }
+
     private func handleWindowAction(info: WindowInfo, action: WindowAction) {
         if action == .quit {
             NSRunningApplication(processIdentifier: info.pid)?.terminate()
             return
         }
+        
         let appRef = AXUIElementCreateApplication(info.pid)
+        let app = NSRunningApplication(processIdentifier: info.pid)
+        
         var value: AnyObject?
         AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &value)
         guard let list = value as? [AXUIElement] else { return }
+        
         for win in list {
             var id: CGWindowID = 0
             _ = _AXUIElementGetWindow(win, &id)
             if id == info.id {
-                if action == .minimize { 
-                    AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, true as CFTypeRef) 
-                } else {
+                switch action {
+                case .minimize:
+                    AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, true as CFTypeRef)
+                case .open:
                     AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, false as CFTypeRef)
                     AXUIElementPerformAction(win, kAXRaiseAction as CFString)
-                    if let app = NSRunningApplication(processIdentifier: info.pid) {
-                        if #available(macOS 14.0, *) {
-                            app.activate()
+                    activateApp(app)
+                case .toggle:
+                    var minVal: AnyObject?
+                    AXUIElementCopyAttributeValue(win, kAXMinimizedAttribute as CFString, &minVal)
+                    let isMinimized = (minVal as? Bool) == true
+                    
+                    if isMinimized {
+                        AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, false as CFTypeRef)
+                        AXUIElementPerformAction(win, kAXRaiseAction as CFString)
+                        activateApp(app)
+                    } else {
+                        var focusedWindow: AnyObject?
+                        var focusedID: CGWindowID = 0
+                        let result = AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &focusedWindow)
+                        
+                        if result == .success, let focusedWin = focusedWindow {
+                            _ = _AXUIElementGetWindow(focusedWin as! AXUIElement, &focusedID)
+                        }
+                        
+                        let isAppActive = app?.isActive ?? false
+                        if isAppActive && focusedID == info.id {
+                            AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, true as CFTypeRef)
                         } else {
-                            app.activate(options: .activateIgnoringOtherApps)
+                            AXUIElementPerformAction(win, kAXRaiseAction as CFString)
+                            activateApp(app)
                         }
                     }
+                case .quit:
+                    break
                 }
                 break
             }
