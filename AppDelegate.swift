@@ -7,9 +7,11 @@ func _AXUIElementGetWindow(_ element: AXUIElement, _ identifier: UnsafeMutablePo
 class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSPanel!
     var taskbarView: TaskbarView!
+    var statusItem: NSStatusItem?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        setupStatusItem()
         setupWindow()
         
         Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
@@ -33,14 +35,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         refreshWindows()
     }
 
+    private func setupStatusItem() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = statusItem?.button {
+            button.image = NSImage(systemSymbolName: "menubar.dock.rectangle", accessibilityDescription: "MiniBar")
+        }
+        
+        let menu = NSMenu()
+        menu.addItem(NSMenuItem(title: "MiniBar Active", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(NSMenuItem(title: "Quit MiniBar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        statusItem?.menu = menu
+    }
+
     private func setupWindow() {
-        // Use the primary screen (index 0) to ensure we get the main display
         let screen = NSScreen.screens.first ?? NSScreen.main
         let screenFrame = screen?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let barHeight: CGFloat = 40
         
-        // y: 0 is the bottom of the screen in macOS coordinates
-        let rect = NSRect(x: screenFrame.origin.x, y: screenFrame.origin.y, width: screenFrame.width, height: barHeight)
+        let barHeight: CGFloat = 64 
+        let bottomMargin: CGFloat = 12
+        let rect = NSRect(x: screenFrame.origin.x, y: screenFrame.origin.y + bottomMargin, width: screenFrame.width, height: barHeight)
         
         window = NSPanel(
             contentRect: rect,
@@ -49,14 +63,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             defer: false
         )
         
-        // Use statusWindow level to stay above normal windows but below system overlays
-        window.level = NSWindow.Level(Int(CGWindowLevelForKey(.statusWindow)))
+        window.level = NSWindow.Level(Int(CGWindowLevelForKey(.dockWindow)))
         window.isFloatingPanel = true
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle, .stationary]
         
         window.backgroundColor = .clear
         window.isOpaque = false
         window.hasShadow = false
+        
+        // Enforce dark appearance so text is always light and background is dark/blurred
+        window.appearance = NSAppearance(named: .vibrantDark)
         
         taskbarView = TaskbarView(frame: window.contentView!.bounds)
         window.contentView = taskbarView
@@ -67,8 +83,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func handleScreenChange() {
         let screen = NSScreen.screens.first ?? NSScreen.main
         let screenFrame = screen?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let barHeight: CGFloat = 40
-        let newRect = NSRect(x: screenFrame.origin.x, y: screenFrame.origin.y, width: screenFrame.width, height: barHeight)
+        let barHeight: CGFloat = 64
+        let bottomMargin: CGFloat = 12
+        let newRect = NSRect(x: screenFrame.origin.x, y: screenFrame.origin.y + bottomMargin, width: screenFrame.width, height: barHeight)
         window.setFrame(newRect, display: true)
     }
 

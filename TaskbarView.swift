@@ -31,42 +31,47 @@ class WindowItemView: NSView {
         iconView.image = info.icon
         iconView.imageScaling = .scaleProportionallyUpOrDown
         iconView.translatesAutoresizingMaskIntoConstraints = false
-        iconView.alphaValue = info.isMinimized ? 0.6 : 1.0
+        iconView.alphaValue = info.isMinimized ? 0.4 : 1.0
         
-        ownerLabel.font = NSFont.systemFont(ofSize: 10, weight: .bold)
+        ownerLabel.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
         ownerLabel.textColor = info.isMinimized ? NSColor.white.withAlphaComponent(0.4) : .white
         ownerLabel.lineBreakMode = .byTruncatingTail
         ownerLabel.stringValue = info.ownerName
+        ownerLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         
         titleLabel.font = NSFont.systemFont(ofSize: 9, weight: .regular)
-        titleLabel.textColor = info.isMinimized ? NSColor.white.withAlphaComponent(0.2) : NSColor(white: 0.9, alpha: 0.8)
+        titleLabel.textColor = info.isMinimized ? NSColor.white.withAlphaComponent(0.25) : NSColor(white: 0.9, alpha: 0.7)
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.stringValue = info.title
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         
         let textStack = NSStackView(views: [ownerLabel, titleLabel])
         textStack.orientation = .vertical
-        textStack.spacing = -1
+        textStack.spacing = 0
         textStack.alignment = .leading
+        textStack.translatesAutoresizingMaskIntoConstraints = false
         
         let mainStack = NSStackView(views: [iconView, textStack])
         mainStack.orientation = .horizontal
-        mainStack.spacing = 8
+        mainStack.spacing = 10
         mainStack.alignment = .centerY
         mainStack.translatesAutoresizingMaskIntoConstraints = false
         
         addSubview(mainStack)
         
         NSLayoutConstraint.activate([
-            iconView.widthAnchor.constraint(equalToConstant: 22),
-            iconView.heightAnchor.constraint(equalToConstant: 22),
+            iconView.widthAnchor.constraint(equalToConstant: 28),
+            iconView.heightAnchor.constraint(equalToConstant: 28),
             
-            mainStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            mainStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            mainStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            mainStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            mainStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            mainStack.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            mainStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
             
+            // Constrain the width of the whole item
             widthAnchor.constraint(lessThanOrEqualToConstant: 200),
-            widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
-            heightAnchor.constraint(equalToConstant: 34)
+            widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            heightAnchor.constraint(equalToConstant: 44)
         ])
         
         updateBackground()
@@ -99,61 +104,62 @@ class WindowItemView: NSView {
 }
 
 class TaskbarView: NSView {
+    private let dockContainer = NSView()
     private let visualEffectView = NSVisualEffectView()
-    private let darkOverlay = NSView()
-    private let scrollView = NSScrollView()
     private let stackView = NSStackView()
     private var currentWindows: [WindowInfo] = []
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         
+        dockContainer.translatesAutoresizingMaskIntoConstraints = false
+        dockContainer.wantsLayer = true
+        dockContainer.layer?.cornerRadius = 20
+        dockContainer.layer?.masksToBounds = true
+        dockContainer.layer?.borderWidth = 0.5
+        dockContainer.layer?.borderColor = NSColor.white.withAlphaComponent(0.15).cgColor
+        addSubview(dockContainer)
+
         visualEffectView.blendingMode = .withinWindow
-        visualEffectView.material = .underWindowBackground
+        visualEffectView.material = .hudWindow 
         visualEffectView.state = .active
         visualEffectView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(visualEffectView)
+        dockContainer.addSubview(visualEffectView)
 
-        darkOverlay.wantsLayer = true
-        darkOverlay.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.5).cgColor
-        darkOverlay.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(darkOverlay)
+        let overlay = NSView()
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        overlay.wantsLayer = true
+        overlay.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.2).cgColor
+        dockContainer.addSubview(overlay)
 
-        scrollView.drawsBackground = false
-        scrollView.hasHorizontalScroller = false
-        scrollView.hasVerticalScroller = false
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(scrollView)
-        
         stackView.orientation = .horizontal
-        stackView.spacing = 8
+        stackView.spacing = 6
         stackView.alignment = .centerY
-        stackView.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+        stackView.edgeInsets = NSEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
         stackView.translatesAutoresizingMaskIntoConstraints = false
-        
-        scrollView.documentView = stackView
+        dockContainer.addSubview(stackView)
         
         NSLayoutConstraint.activate([
-            visualEffectView.topAnchor.constraint(equalTo: topAnchor),
-            visualEffectView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            visualEffectView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            visualEffectView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            dockContainer.centerXAnchor.constraint(equalTo: centerXAnchor),
+            dockContainer.centerYAnchor.constraint(equalTo: centerYAnchor),
+            dockContainer.heightAnchor.constraint(equalToConstant: 52),
+            dockContainer.widthAnchor.constraint(greaterThanOrEqualToConstant: 60),
+            dockContainer.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -40),
+
+            visualEffectView.topAnchor.constraint(equalTo: dockContainer.topAnchor),
+            visualEffectView.bottomAnchor.constraint(equalTo: dockContainer.bottomAnchor),
+            visualEffectView.leadingAnchor.constraint(equalTo: dockContainer.leadingAnchor),
+            visualEffectView.trailingAnchor.constraint(equalTo: dockContainer.trailingAnchor),
             
-            darkOverlay.topAnchor.constraint(equalTo: topAnchor),
-            darkOverlay.bottomAnchor.constraint(equalTo: bottomAnchor),
-            darkOverlay.leadingAnchor.constraint(equalTo: leadingAnchor),
-            darkOverlay.trailingAnchor.constraint(equalTo: trailingAnchor),
+            overlay.topAnchor.constraint(equalTo: dockContainer.topAnchor),
+            overlay.bottomAnchor.constraint(equalTo: dockContainer.bottomAnchor),
+            overlay.leadingAnchor.constraint(equalTo: dockContainer.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: dockContainer.trailingAnchor),
             
-            scrollView.topAnchor.constraint(equalTo: topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            
-            // Allow stackView to be as wide as it needs to be inside the scrollView
-            stackView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
-            stackView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
-            stackView.bottomAnchor.constraint(equalTo: scrollView.contentView.bottomAnchor),
-            stackView.heightAnchor.constraint(equalTo: scrollView.heightAnchor)
+            stackView.topAnchor.constraint(equalTo: dockContainer.topAnchor),
+            stackView.bottomAnchor.constraint(equalTo: dockContainer.bottomAnchor),
+            stackView.leadingAnchor.constraint(equalTo: dockContainer.leadingAnchor),
+            stackView.trailingAnchor.constraint(equalTo: dockContainer.trailingAnchor),
         ])
     }
 
@@ -165,10 +171,9 @@ class TaskbarView: NSView {
         
         DispatchQueue.main.async {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.2
+                context.duration = 0.25
                 context.allowsImplicitAnimation = true
                 
-                // Remove views not in new list
                 for subview in self.stackView.arrangedSubviews {
                     if let itemView = subview as? WindowItemView, !windows.contains(where: { $0.id == itemView.info.id }) {
                         itemView.animator().alphaValue = 0
@@ -177,11 +182,9 @@ class TaskbarView: NSView {
                     }
                 }
                 
-                // Add or reposition
                 for (index, info) in windows.enumerated() {
                     if let existing = self.stackView.arrangedSubviews.compactMap({ $0 as? WindowItemView }).first(where: { $0.info.id == info.id }) {
                         if existing.info != info {
-                            // Simple way to refresh: replace if info changed
                             let newView = WindowItemView(info: info, onClick: { onAction(info, .toggle) }, onRightClick: { v in self.showContextMenu(for: info, in: v, onAction: onAction) })
                             let oldIdx = self.stackView.arrangedSubviews.firstIndex(of: existing)!
                             self.stackView.removeArrangedSubview(existing)
@@ -217,7 +220,7 @@ class TaskbarView: NSView {
         quitItem.representedObject = ["info": info, "action": WindowAction.quit, "callback": onAction]
         menu.addItem(quitItem)
         
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.height + 5), in: view)
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.height + 8), in: view)
     }
     
     @objc private func contextMenuHandler(_ sender: NSMenuItem) {
