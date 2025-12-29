@@ -7,7 +7,7 @@ struct WindowInfo {
     let ownerName: String
     let title: String
     let firstLetter: String
-    let isMinimized: Bool
+    var isMinimized: Bool
     
     init?(dict: [String: Any]) {
         guard let id = dict[kCGWindowNumber as String] as? CGWindowID,
@@ -21,12 +21,9 @@ struct WindowInfo {
         self.ownerName = owner
         
         let rawTitle = dict[kCGWindowName as String] as? String ?? ""
-        // Use window title if available, otherwise use program name
         self.title = rawTitle.isEmpty ? owner : rawTitle
         self.firstLetter = String(owner.prefix(1)).uppercased()
-        
-        let isOnScreen = dict[kCGWindowIsOnscreen as String] as? Bool ?? false
-        self.isMinimized = !isOnScreen
+        self.isMinimized = false // Default, updated by AppDelegate
     }
     
     var displayName: String {

@@ -14,16 +14,20 @@ class WindowButton: NSButton {
         self.isBordered = true
         self.controlSize = .regular
         
+        // UI Logic: 
+        // - Minimized windows are gray and italic
+        // - Non-minimized windows are white
         let color = info.isMinimized ? NSColor.lightGray : NSColor.white
         let font: NSFont
         if info.isMinimized {
-            font = NSFontManager.shared.convert(NSFont.systemFont(ofSize: 12), toHaveTrait: .italicFontMask)
+            font = NSFontManager.shared.convert(NSFont.systemFont(ofSize: 11), toHaveTrait: .italicFontMask)
         } else {
-            font = NSFont.systemFont(ofSize: 12, weight: .medium)
+            font = NSFont.systemFont(ofSize: 11, weight: .medium)
         }
         
         let pStyle = NSMutableParagraphStyle()
         pStyle.alignment = .center
+        pStyle.lineBreakMode = .byTruncatingTail
         
         self.attributedTitle = NSAttributedString(string: info.displayName, attributes: [
             .foregroundColor: color,
@@ -31,12 +35,11 @@ class WindowButton: NSButton {
             .paragraphStyle: pStyle
         ])
         
-        if info.isMinimized {
-            self.alphaValue = 0.6
-        }
+        // Visually dim minimized buttons
+        self.alphaValue = info.isMinimized ? 0.5 : 1.0
         
         self.translatesAutoresizingMaskIntoConstraints = false
-        // Allow the button to hug its text content
+        self.widthAnchor.constraint(lessThanOrEqualToConstant: 250).isActive = true
         self.setContentHuggingPriority(.defaultHigh, for: .horizontal)
     }
     
@@ -50,13 +53,13 @@ class TaskbarView: NSView {
         super.init(frame: frameRect)
         
         self.wantsLayer = true
-        self.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.8).cgColor
+        self.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.85).cgColor
 
         stackView.orientation = .horizontal
-        stackView.spacing = 10
+        stackView.spacing = 8
         stackView.alignment = .centerY
         stackView.distribution = .gravityAreas
-        stackView.edgeInsets = NSEdgeInsets(top: 0, left: 20, bottom: 0, right: 20)
+        stackView.edgeInsets = NSEdgeInsets(top: 0, left: 15, bottom: 0, right: 15)
         
         addSubview(stackView)
         stackView.translatesAutoresizingMaskIntoConstraints = false

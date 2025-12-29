@@ -1,0 +1,5 @@
+
+```
+nix develop
+make run
+```

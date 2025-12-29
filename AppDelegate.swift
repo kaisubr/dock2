@@ -49,6 +49,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.contentView = taskbarView
     }
 
+    private func checkMinimizedState(pid: Int32, id: CGWindowID) -> Bool {
+        let appRef = AXUIElementCreateApplication(pid)
+        var value: AnyObject?
+        let result = AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &value)
+        guard result == .success, let list = value as? [AXUIElement] else { return false }
+        
+        for win in list {
+            var winID: CGWindowID = 0
+            _ = _AXUIElementGetWindow(win, &winID)
+            if winID == id {
+                var minVal: AnyObject?
+                AXUIElementCopyAttributeValue(win, kAXMinimizedAttribute as CFString, &minVal)
+                return (minVal as? Bool) == true
+            }
+        }
+        return false
+    }
+
     @objc private func refreshWindows() {
         let onScreenOptions: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
         let onScreenList = CGWindowListCopyWindowInfo(onScreenOptions, kCGNullWindowID) as? [[String: Any]] ?? []
@@ -61,20 +79,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         var windows = allWindows.compactMap { dict -> WindowInfo? in
             guard let layer = dict[kCGWindowLayer as String] as? Int, layer == 0,
-                  let pid = dict[kCGWindowOwnerPID as String] as? Int32, pid != currentPID else {
+                  let pid = dict[kCGWindowOwnerPID as String] as? Int32, pid != currentPID,
+                  let id = dict[kCGWindowNumber as String] as? CGWindowID else {
                 return nil
             }
             
-            let id = dict[kCGWindowNumber as String] as? CGWindowID ?? 0
-            let isOnThisSpace = onScreenIDs.contains(id)
-            let isMinimized = !(dict[kCGWindowIsOnscreen as String] as? Bool ?? true)
+            let title = dict[kCGWindowName as String] as? String ?? ""
+            if title.isEmpty { return nil }
             
-            // Show only windows on this space OR minimized windows
-            if !isOnThisSpace && !isMinimized { return nil }
-            return WindowInfo(dict: dict)
+            let isOnCurrentSpace = onScreenIDs.contains(id)
+            var info = WindowInfo(dict: dict)
+            
+            if !isOnCurrentSpace {
+                info?.isMinimized = checkMinimizedState(pid: pid, id: id)
+            } else {
+                info?.isMinimized = false
+            }
+            
+            return info
         }
         
-        // Sorting: Program Name -> Window Title
         windows.sort {
             if $0.ownerName.lowercased() != $1.ownerName.lowercased() {
                 return $0.ownerName.lowercased() < $1.ownerName.lowercased()
@@ -98,15 +122,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if id == info.id {
                 var minVal: AnyObject?
                 AXUIElementCopyAttributeValue(win, kAXMinimizedAttribute as CFString, &minVal)
-                if (minVal as? Bool) == true {
+                let isCurrentlyMinimized = (minVal as? Bool) == true
+                
+                if isCurrentlyMinimized {
+                    // Restore: Un-minimize, raise, and activate app
                     AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, false as CFTypeRef)
                     AXUIElementPerformAction(win, kAXRaiseAction as CFString)
-                    NSRunningApplication(processIdentifier: info.pid)?.activate()
+                    NSRunningApplication(processIdentifier: info.pid)?.activate(options: .activateIgnoringOtherApps)
                 } else {
+                    // Minimize the window
                     AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, true as CFTypeRef)
                 }
                 break
             }
         }
+        // Force a refresh so UI updates immediately after click
+        self.refreshWindows()
     }
 }
