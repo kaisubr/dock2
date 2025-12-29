@@ -1,0 +1,83 @@
+
+import AppKit
+
+class WindowButton: NSButton {
+    var windowInfo: WindowInfo?
+    
+    init(info: WindowInfo, target: Any?, action: Selector) {
+        super.init(frame: .zero)
+        self.windowInfo = info
+        self.target = target as AnyObject
+        self.action = action
+        
+        self.bezelStyle = .recessed
+        self.isBordered = true
+        self.controlSize = .regular
+        
+        let color = info.isMinimized ? NSColor.lightGray : NSColor.white
+        let font: NSFont
+        if info.isMinimized {
+            font = NSFontManager.shared.convert(NSFont.systemFont(ofSize: 12), toHaveTrait: .italicFontMask)
+        } else {
+            font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        }
+        
+        let pStyle = NSMutableParagraphStyle()
+        pStyle.alignment = .center
+        
+        self.attributedTitle = NSAttributedString(string: info.displayName, attributes: [
+            .foregroundColor: color,
+            .font: font,
+            .paragraphStyle: pStyle
+        ])
+        
+        if info.isMinimized {
+            self.alphaValue = 0.6
+        }
+        
+        self.translatesAutoresizingMaskIntoConstraints = false
+        // Allow the button to hug its text content
+        self.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+    }
+    
+    required init?(coder: NSCoder) { fatalError() }
+}
+
+class TaskbarView: NSView {
+    let stackView = NSStackView()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        
+        self.wantsLayer = true
+        self.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.8).cgColor
+
+        stackView.orientation = .horizontal
+        stackView.spacing = 10
+        stackView.alignment = .centerY
+        stackView.distribution = .gravityAreas
+        stackView.edgeInsets = NSEdgeInsets(top: 0, left: 20, bottom: 0, right: 20)
+        
+        addSubview(stackView)
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        
+        NSLayoutConstraint.activate([
+            stackView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stackView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stackView.topAnchor.constraint(equalTo: topAnchor),
+            stackView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func updateWindows(_ windows: [WindowInfo], target: Any?, action: Selector) {
+        DispatchQueue.main.async {
+            self.stackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+            for info in windows {
+                let btn = WindowButton(info: info, target: target, action: action)
+                self.stackView.addArrangedSubview(btn)
+            }
+        }
+    }
+}
