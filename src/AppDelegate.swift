@@ -167,6 +167,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         
         windows.sort {
+            if $0.orderPriority != $1.orderPriority {
+                return $0.orderPriority < $1.orderPriority
+            }
             if $0.ownerName.lowercased() != $1.ownerName.lowercased() {
                 return $0.ownerName.lowercased() < $1.ownerName.lowercased()
             }
@@ -258,6 +261,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleWindowAction(info: WindowInfo, action: WindowAction) {
+        if case .reorder(let orderPriority) = action {
+            ConfigManager.shared.setOrderPriority(for: info, orderPriority: orderPriority)
+            refreshWindows()
+            return
+        }
+
         if action == .quit {
             NSRunningApplication(processIdentifier: info.pid)?.terminate()
             return
@@ -307,7 +316,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                             activateApp(app)
                         }
                     }
-                case .quit:
+                case .quit, .reorder:
                     break
                 }
                 break

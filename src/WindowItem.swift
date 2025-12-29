@@ -7,7 +7,9 @@ struct WindowInfo: Equatable {
     let ownerName: String
     let title: String
     let icon: NSImage?
+    let configKey: String 
     var isMinimized: Bool
+    var orderPriority: Int = Int.max
     
     init?(dict: [String: Any]) {
         guard let id = dict[kCGWindowNumber as String] as? CGWindowID,
@@ -24,15 +26,22 @@ struct WindowInfo: Equatable {
         self.title = rawTitle.isEmpty ? owner : rawTitle
         self.isMinimized = false
         
-        
         if let app = NSRunningApplication(processIdentifier: pid) {
             self.icon = app.icon
+            
+            self.configKey = app.bundleIdentifier ?? owner
         } else {
             self.icon = NSWorkspace.shared.icon(forFileType: NSFileTypeForHFSTypeCode(OSType(kGenericApplicationIcon)))
+            self.configKey = owner
         }
+        
+        self.orderPriority = ConfigManager.shared.getOrderPriority(for: self)
     }
 
     static func == (lhs: WindowInfo, rhs: WindowInfo) -> Bool {
-        return lhs.id == rhs.id && lhs.isMinimized == rhs.isMinimized && lhs.title == rhs.title
+        return lhs.id == rhs.id && 
+               lhs.isMinimized == rhs.isMinimized && 
+               lhs.title == rhs.title && 
+               lhs.orderPriority == rhs.orderPriority
     }
 }

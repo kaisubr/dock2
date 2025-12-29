@@ -331,6 +331,29 @@ class TaskbarView: NSView {
     private func showContextMenu(for info: WindowInfo, in view: NSView, onAction: @escaping (WindowInfo, WindowAction) -> Void) {
         let menu = NSMenu()
         menu.autoenablesItems = false
+        
+        let reorderItem = NSMenuItem(title: "Reorder", action: nil, keyEquivalent: "")
+        let subMenu = NSMenu()
+        for i in 1...10 {
+            let item = NSMenuItem(title: "\(i)", action: #selector(contextMenuHandler(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = ["info": info, "action": WindowAction.reorder(i), "callback": onAction]
+            if info.orderPriority == i {
+                item.state = .on
+            }
+            subMenu.addItem(item)
+        }
+        subMenu.addItem(NSMenuItem.separator())
+        let defaultItem = NSMenuItem(title: "No order preference", action: #selector(contextMenuHandler(_:)), keyEquivalent: "")
+        defaultItem.target = self
+        defaultItem.representedObject = ["info": info, "action": WindowAction.reorder(nil), "callback": onAction]
+        if info.orderPriority == Int.max {
+            defaultItem.state = .on
+        }
+        subMenu.addItem(defaultItem)
+        reorderItem.submenu = subMenu
+        menu.addItem(reorderItem)
+        
         let actions: [(String, WindowAction)] = [("Open", .open), ("Minimize", .minimize), ("Quit \(info.ownerName)", .quit)]
         for (title, action) in actions {
             let item = NSMenuItem(title: title, action: #selector(contextMenuHandler(_:)), keyEquivalent: "")
@@ -350,4 +373,14 @@ class TaskbarView: NSView {
     }
 }
 
-enum WindowAction { case toggle, open, minimize, quit }
+enum WindowAction: Equatable {
+    case toggle, open, minimize, quit, reorder(Int?)
+    
+    static func == (lhs: WindowAction, rhs: WindowAction) -> Bool {
+        switch (lhs, rhs) {
+        case (.toggle, .toggle), (.open, .open), (.minimize, .minimize), (.quit, .quit): return true
+        case (.reorder(let a), .reorder(let b)): return a == b
+        default: return false
+        }
+    }
+}
