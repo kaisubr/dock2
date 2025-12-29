@@ -3,3 +3,4 @@ scripts
 .venv
 .vscode
 dist
+.DS_Store

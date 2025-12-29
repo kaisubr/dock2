@@ -24,7 +24,7 @@ struct WindowInfo: Equatable {
         self.title = rawTitle.isEmpty ? owner : rawTitle
         self.isMinimized = false
         
-        // fetch the application icon
+        
         if let app = NSRunningApplication(processIdentifier: pid) {
             self.icon = app.icon
         } else {

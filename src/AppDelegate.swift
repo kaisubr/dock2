@@ -58,11 +58,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupWindow() {
-        let screen = NSScreen.screens.first ?? NSScreen.main
+        
+        let screen = NSScreen.main ?? NSScreen.screens.first
         let screenFrame = screen?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         
         let barHeight: CGFloat = 64 
         let bottomMargin: CGFloat = 12
+        
         let rect = NSRect(x: screenFrame.origin.x, y: screenFrame.origin.y + bottomMargin, width: screenFrame.width, height: barHeight)
         
         window = NSPanel(
@@ -83,6 +85,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         taskbarView = TaskbarView(frame: window.contentView!.bounds)
         taskbarView.onHidePressed = { [weak self] in self?.toggleVisibility() }
+        taskbarView.autoresizingMask = [.width, .height]
         window.contentView = taskbarView
         
         window.orderFrontRegardless()

@@ -118,12 +118,21 @@ class WindowItemView: NSView {
 class TaskbarView: NSView {
     var onHidePressed: (() -> Void)?
     private let dockContainer = NSView()
-    private let stackView = NSStackView()
+    private let fixedStack = NSStackView() 
+    private let scrollView = NSScrollView()
+    private let windowStack = NSStackView() 
     private let hideButton = HideButton()
     private var currentWindows: [WindowInfo] = []
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        setupLayout()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+    
+    private func setupLayout() {
+        
         dockContainer.translatesAutoresizingMaskIntoConstraints = false
         dockContainer.wantsLayer = true
         dockContainer.layer?.cornerRadius = 20
@@ -138,68 +147,102 @@ class TaskbarView: NSView {
         visualEffectView.state = .active
         visualEffectView.translatesAutoresizingMaskIntoConstraints = false
         dockContainer.addSubview(visualEffectView)
-
-        stackView.orientation = .horizontal
-        stackView.spacing = 6
-        stackView.alignment = .centerY
-        stackView.edgeInsets = NSEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        dockContainer.addSubview(stackView)
+        
+        
+        fixedStack.orientation = .horizontal
+        fixedStack.spacing = 6
+        fixedStack.alignment = .centerY
+        fixedStack.translatesAutoresizingMaskIntoConstraints = false
+        dockContainer.addSubview(fixedStack)
         
         hideButton.onClick = { [weak self] in self?.onHidePressed?() }
-        stackView.addArrangedSubview(hideButton)
+        fixedStack.addArrangedSubview(hideButton)
         
         let separator = NSView()
         separator.wantsLayer = true
         separator.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.1).cgColor
         separator.translatesAutoresizingMaskIntoConstraints = false
-        let widthC = separator.widthAnchor.constraint(equalToConstant: 1)
-        widthC.identifier = "sep"
-        widthC.isActive = true
+        separator.widthAnchor.constraint(equalToConstant: 1).isActive = true
         separator.heightAnchor.constraint(equalToConstant: 24).isActive = true
-        stackView.addArrangedSubview(separator)
-
+        fixedStack.addArrangedSubview(separator)
+        
+        
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = false
+        scrollView.hasHorizontalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        dockContainer.addSubview(scrollView)
+        
+        
+        windowStack.orientation = .horizontal
+        windowStack.spacing = 6
+        windowStack.alignment = .centerY
+        windowStack.translatesAutoresizingMaskIntoConstraints = false
+        
+        scrollView.documentView = windowStack
+        
+        
         NSLayoutConstraint.activate([
-            dockContainer.centerXAnchor.constraint(equalTo: centerXAnchor),
+            
+            dockContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            dockContainer.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             dockContainer.centerYAnchor.constraint(equalTo: centerYAnchor),
             dockContainer.heightAnchor.constraint(equalToConstant: 52),
-            dockContainer.widthAnchor.constraint(greaterThanOrEqualToConstant: 60),
+            
+            
             visualEffectView.topAnchor.constraint(equalTo: dockContainer.topAnchor),
             visualEffectView.bottomAnchor.constraint(equalTo: dockContainer.bottomAnchor),
             visualEffectView.leadingAnchor.constraint(equalTo: dockContainer.leadingAnchor),
             visualEffectView.trailingAnchor.constraint(equalTo: dockContainer.trailingAnchor),
-            stackView.topAnchor.constraint(equalTo: dockContainer.topAnchor),
-            stackView.bottomAnchor.constraint(equalTo: dockContainer.bottomAnchor),
-            stackView.leadingAnchor.constraint(equalTo: dockContainer.leadingAnchor),
-            stackView.trailingAnchor.constraint(equalTo: dockContainer.trailingAnchor),
+            
+            
+            fixedStack.leadingAnchor.constraint(equalTo: dockContainer.leadingAnchor, constant: 10),
+            fixedStack.centerYAnchor.constraint(equalTo: dockContainer.centerYAnchor),
+            fixedStack.heightAnchor.constraint(equalTo: dockContainer.heightAnchor),
+            
+            
+            scrollView.leadingAnchor.constraint(equalTo: fixedStack.trailingAnchor, constant: 6),
+            scrollView.trailingAnchor.constraint(equalTo: dockContainer.trailingAnchor, constant: -10),
+            scrollView.topAnchor.constraint(equalTo: dockContainer.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: dockContainer.bottomAnchor),
+            
+            
+            
+            
+            
+            windowStack.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
+            windowStack.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
+            windowStack.bottomAnchor.constraint(equalTo: scrollView.contentView.bottomAnchor),
+            windowStack.heightAnchor.constraint(equalTo: scrollView.contentView.heightAnchor)
         ])
     }
-
-    required init?(coder: NSCoder) { fatalError() }
 
     func updateWindows(_ windows: [WindowInfo], onAction: @escaping (WindowInfo, WindowAction) -> Void) {
         if currentWindows == windows { return }
         currentWindows = windows
         
         DispatchQueue.main.async {
-            let existingViews = self.stackView.arrangedSubviews.compactMap { $0 as? WindowItemView }
+            
+            let existingViews = self.windowStack.arrangedSubviews.compactMap { $0 as? WindowItemView }
             for view in existingViews {
                 if !windows.contains(where: { $0.id == view.info.id }) {
-                    self.stackView.removeArrangedSubview(view)
+                    self.windowStack.removeArrangedSubview(view)
                     view.removeFromSuperview()
                 }
             }
             
+            
             for info in windows {
                 if let existing = existingViews.first(where: { $0.info.id == info.id }) {
                     if existing.info != info {
-                        let idx = self.stackView.arrangedSubviews.firstIndex(of: existing)!
-                        self.stackView.removeArrangedSubview(existing)
+                        let idx = self.windowStack.arrangedSubviews.firstIndex(of: existing)!
+                        self.windowStack.removeArrangedSubview(existing)
                         existing.removeFromSuperview()
-                        self.stackView.insertArrangedSubview(WindowItemView(info: info, onClick: { onAction(info, .toggle) }, onRightClick: { v in self.showContextMenu(for: info, in: v, onAction: onAction) }), at: idx)
+                        self.windowStack.insertArrangedSubview(WindowItemView(info: info, onClick: { onAction(info, .toggle) }, onRightClick: { v in self.showContextMenu(for: info, in: v, onAction: onAction) }), at: idx)
                     }
                 } else {
-                    self.stackView.addArrangedSubview(WindowItemView(info: info, onClick: { onAction(info, .toggle) }, onRightClick: { v in self.showContextMenu(for: info, in: v, onAction: onAction) }))
+                    self.windowStack.addArrangedSubview(WindowItemView(info: info, onClick: { onAction(info, .toggle) }, onRightClick: { v in self.showContextMenu(for: info, in: v, onAction: onAction) }))
                 }
             }
         }
