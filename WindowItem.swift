@@ -23,7 +23,7 @@ struct WindowInfo {
         let rawTitle = dict[kCGWindowName as String] as? String ?? ""
         self.title = rawTitle.isEmpty ? owner : rawTitle
         self.firstLetter = String(owner.prefix(1)).uppercased()
-        self.isMinimized = false // Default, updated by AppDelegate
+        self.isMinimized = false
     }
     
     var displayName: String {

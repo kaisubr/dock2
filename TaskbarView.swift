@@ -14,20 +14,14 @@ class WindowButton: NSButton {
         self.isBordered = true
         self.controlSize = .regular
         
-        // UI Logic: 
-        // - Minimized windows are gray and italic
-        // - Non-minimized windows are white
-        let color = info.isMinimized ? NSColor.lightGray : NSColor.white
-        let font: NSFont
-        if info.isMinimized {
-            font = NSFontManager.shared.convert(NSFont.systemFont(ofSize: 11), toHaveTrait: .italicFontMask)
-        } else {
-            font = NSFont.systemFont(ofSize: 11, weight: .medium)
-        }
-        
         let pStyle = NSMutableParagraphStyle()
         pStyle.alignment = .center
         pStyle.lineBreakMode = .byTruncatingTail
+        
+        let color = info.isMinimized ? NSColor.lightGray : NSColor.white
+        let font = info.isMinimized ? 
+            NSFontManager.shared.convert(NSFont.systemFont(ofSize: 11), toHaveTrait: .italicFontMask) :
+            NSFont.systemFont(ofSize: 11, weight: .medium)
         
         self.attributedTitle = NSAttributedString(string: info.displayName, attributes: [
             .foregroundColor: color,
@@ -35,8 +29,7 @@ class WindowButton: NSButton {
             .paragraphStyle: pStyle
         ])
         
-        // Visually dim minimized buttons
-        self.alphaValue = info.isMinimized ? 0.5 : 1.0
+        self.alphaValue = info.isMinimized ? 0.6 : 1.0
         
         self.translatesAutoresizingMaskIntoConstraints = false
         self.widthAnchor.constraint(lessThanOrEqualToConstant: 250).isActive = true

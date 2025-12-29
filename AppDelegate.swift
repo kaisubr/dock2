@@ -49,7 +49,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.contentView = taskbarView
     }
 
-    private func checkMinimizedState(pid: Int32, id: CGWindowID) -> Bool {
+    private func isWindowMinimized(pid: Int32, id: CGWindowID) -> Bool {
         let appRef = AXUIElementCreateApplication(pid)
         var value: AnyObject?
         let result = AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &value)
@@ -68,10 +68,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func refreshWindows() {
+        // 1. Get IDs of windows actually visible on current space
         let onScreenOptions: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
         let onScreenList = CGWindowListCopyWindowInfo(onScreenOptions, kCGNullWindowID) as? [[String: Any]] ?? []
         let onScreenIDs = Set(onScreenList.compactMap { $0[kCGWindowNumber as String] as? CGWindowID })
         
+        // 2. Get all windows to find minimized ones
         let allOptions: CGWindowListOption = [.excludeDesktopElements, .optionAll]
         guard let allWindows = CGWindowListCopyWindowInfo(allOptions, kCGNullWindowID) as? [[String: Any]] else { return }
         
@@ -88,15 +90,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if title.isEmpty { return nil }
             
             let isOnCurrentSpace = onScreenIDs.contains(id)
-            var info = WindowInfo(dict: dict)
+            let isMinimized = isWindowMinimized(pid: pid, id: id)
             
-            if !isOnCurrentSpace {
-                info?.isMinimized = checkMinimizedState(pid: pid, id: id)
-            } else {
-                info?.isMinimized = false
+            // Keep if it's on the current space OR if it's minimized (regardless of space)
+            if isOnCurrentSpace || isMinimized {
+                var info = WindowInfo(dict: dict)
+                info?.isMinimized = isMinimized
+                return info
             }
             
-            return info
+            return nil
         }
         
         windows.sort {
@@ -112,23 +115,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func handleAction(_ sender: WindowButton) {
         guard let info = sender.windowInfo else { return }
         
-        // 1. Determine which window is currently frontmost (top-most in Z-order)
+        // Determine frontmost window to handle minimize toggle
         let onScreenOptions: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
         let onScreenList = CGWindowListCopyWindowInfo(onScreenOptions, kCGNullWindowID) as? [[String: Any]] ?? []
         let currentPID = ProcessInfo.processInfo.processIdentifier
-        
-        // Find the first window that belongs to another app and is on layer 0 (normal windows)
         let frontmostWindow = onScreenList.first { dict in
             let pid = dict[kCGWindowOwnerPID as String] as? Int32 ?? 0
             let layer = dict[kCGWindowLayer as String] as? Int ?? -1
             return pid != currentPID && layer == 0
         }
-        let frontmostID = frontmostWindow?[kCGWindowNumber as String] as? CGWindowID
+        let isFrontmost = (frontmostWindow?[kCGWindowNumber as String] as? CGWindowID == info.id)
         
-        // Check if the clicked window is the one currently being used
-        let isFrontmost = (frontmostID == info.id)
-        
-        // 2. Perform accessibility actions
         let appRef = AXUIElementCreateApplication(info.pid)
         var value: AnyObject?
         let result = AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &value)
@@ -140,22 +137,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             
             if id == info.id {
                 if isFrontmost {
-                    // Window is already active -> Minimize it
                     AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, true as CFTypeRef)
                 } else {
-                    // Window is not active (minimized or behind) -> Bring to front
-                    // Un-minimize if it was minimized
+                    // Un-minimize if needed
                     AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, false as CFTypeRef)
-                    // Raise it to the top of its app's window stack
+                    // Focus
                     AXUIElementPerformAction(win, kAXRaiseAction as CFString)
-                    // Activate the application
-                    NSRunningApplication(processIdentifier: info.pid)?.activate(options: .activateIgnoringOtherApps)
+                    if let app = NSRunningApplication(processIdentifier: info.pid) {
+                        app.activate(options: .activateIgnoringOtherApps)
+                    }
                 }
                 break
             }
         }
         
-        // Force a refresh so UI updates immediately after click
         self.refreshWindows()
     }
 }
