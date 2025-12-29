@@ -1,12 +1,11 @@
 
 import AppKit
 
-struct WindowInfo {
+struct WindowInfo: Equatable {
     let id: CGWindowID
     let pid: Int32
     let ownerName: String
     let title: String
-    let firstLetter: String
     var isMinimized: Bool
     
     init?(dict: [String: Any]) {
@@ -21,12 +20,12 @@ struct WindowInfo {
         self.ownerName = owner
         
         let rawTitle = dict[kCGWindowName as String] as? String ?? ""
+        // If title is empty, use owner name as title and "System" or similar as owner
         self.title = rawTitle.isEmpty ? owner : rawTitle
-        self.firstLetter = String(owner.prefix(1)).uppercased()
         self.isMinimized = false
     }
-    
-    var displayName: String {
-        return "[\(firstLetter)] \(title)"
+
+    static func == (lhs: WindowInfo, rhs: WindowInfo) -> Bool {
+        return lhs.id == rhs.id && lhs.isMinimized == rhs.isMinimized && lhs.title == rhs.title
     }
 }
