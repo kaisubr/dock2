@@ -1,28 +1,29 @@
 
 import AppKit
 
-class HideButton: NSView {
+class BarButton: NSView {
     var onClick: (() -> Void)?
     private let imageView = NSImageView()
     private var isHovered = false { didSet { updateBackground() } }
 
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
+    init(icon: String, width: CGFloat, height: CGFloat, iconSize: CGFloat = 14) {
+        super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = 6
+        layer?.cornerRadius = 4
         
-        imageView.image = NSImage(systemSymbolName: "chevron.down.circle.fill", accessibilityDescription: "Hide")
-        imageView.contentTintColor = .white.withAlphaComponent(0.6)
+        imageView.image = NSImage(systemSymbolName: icon, accessibilityDescription: nil)
+        imageView.contentTintColor = .white.withAlphaComponent(0.7)
         imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.imageScaling = .scaleProportionallyDown
         addSubview(imageView)
         
         NSLayoutConstraint.activate([
             imageView.centerXAnchor.constraint(equalTo: centerXAnchor),
             imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            imageView.widthAnchor.constraint(equalToConstant: 24),
-            imageView.heightAnchor.constraint(equalToConstant: 24),
-            widthAnchor.constraint(equalToConstant: 40),
-            heightAnchor.constraint(equalToConstant: 44)
+            imageView.widthAnchor.constraint(equalToConstant: iconSize),
+            imageView.heightAnchor.constraint(equalToConstant: iconSize),
+            self.widthAnchor.constraint(equalToConstant: width),
+            self.heightAnchor.constraint(equalToConstant: height)
         ])
         
         let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
@@ -118,11 +119,22 @@ class WindowItemView: NSView {
 class TaskbarView: NSView {
     var onHidePressed: (() -> Void)?
     private let dockContainer = NSView()
-    private let fixedStack = NSStackView() 
+    private let controlsStack = NSStackView()
     private let scrollView = NSScrollView()
-    private let windowStack = NSStackView() 
-    private let hideButton = HideButton()
+    private let windowStack = NSStackView()
+    
+    private let leftButton = BarButton(icon: "chevron.left", width: 24, height: 20, iconSize: 10)
+    private let rightButton = BarButton(icon: "chevron.right", width: 24, height: 20, iconSize: 10)
+    private let hideButton = BarButton(icon: "chevron.down", width: 50, height: 20, iconSize: 14)
+    
     private var currentWindows: [WindowInfo] = []
+    private var layoutState: LayoutState = .expanded
+    
+    private var leadingConstraint: NSLayoutConstraint!
+    private var trailingConstraint: NSLayoutConstraint!
+    private var widthConstraint: NSLayoutConstraint!
+
+    enum LayoutState { case expanded, collapsedLeft, collapsedRight }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -132,7 +144,6 @@ class TaskbarView: NSView {
     required init?(coder: NSCoder) { fatalError() }
     
     private func setupLayout() {
-        
         dockContainer.translatesAutoresizingMaskIntoConstraints = false
         dockContainer.wantsLayer = true
         dockContainer.layer?.cornerRadius = 20
@@ -149,23 +160,28 @@ class TaskbarView: NSView {
         dockContainer.addSubview(visualEffectView)
         
         
-        fixedStack.orientation = .horizontal
-        fixedStack.spacing = 6
-        fixedStack.alignment = .centerY
-        fixedStack.translatesAutoresizingMaskIntoConstraints = false
-        dockContainer.addSubview(fixedStack)
+        let navStack = NSStackView(views: [leftButton, rightButton])
+        navStack.orientation = .horizontal
+        navStack.spacing = 2
+        navStack.distribution = .fillEqually
         
+        controlsStack.orientation = .vertical
+        controlsStack.spacing = 2
+        controlsStack.alignment = .centerX
+        controlsStack.addArrangedSubview(navStack)
+        controlsStack.addArrangedSubview(hideButton)
+        controlsStack.translatesAutoresizingMaskIntoConstraints = false
+        dockContainer.addSubview(controlsStack)
+        
+        leftButton.onClick = { [weak self] in self?.toggleCollapse(to: .collapsedLeft) }
+        rightButton.onClick = { [weak self] in self?.toggleCollapse(to: .collapsedRight) }
         hideButton.onClick = { [weak self] in self?.onHidePressed?() }
-        fixedStack.addArrangedSubview(hideButton)
         
         let separator = NSView()
         separator.wantsLayer = true
         separator.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.1).cgColor
         separator.translatesAutoresizingMaskIntoConstraints = false
-        separator.widthAnchor.constraint(equalToConstant: 1).isActive = true
-        separator.heightAnchor.constraint(equalToConstant: 24).isActive = true
-        fixedStack.addArrangedSubview(separator)
-        
+        dockContainer.addSubview(separator)
         
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = false
@@ -174,48 +190,96 @@ class TaskbarView: NSView {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         dockContainer.addSubview(scrollView)
         
-        
         windowStack.orientation = .horizontal
         windowStack.spacing = 6
         windowStack.alignment = .centerY
         windowStack.translatesAutoresizingMaskIntoConstraints = false
-        
         scrollView.documentView = windowStack
         
-        
         NSLayoutConstraint.activate([
-            
-            dockContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            dockContainer.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             dockContainer.centerYAnchor.constraint(equalTo: centerYAnchor),
             dockContainer.heightAnchor.constraint(equalToConstant: 52),
-            
             
             visualEffectView.topAnchor.constraint(equalTo: dockContainer.topAnchor),
             visualEffectView.bottomAnchor.constraint(equalTo: dockContainer.bottomAnchor),
             visualEffectView.leadingAnchor.constraint(equalTo: dockContainer.leadingAnchor),
             visualEffectView.trailingAnchor.constraint(equalTo: dockContainer.trailingAnchor),
             
+            controlsStack.leadingAnchor.constraint(equalTo: dockContainer.leadingAnchor, constant: 8),
+            controlsStack.centerYAnchor.constraint(equalTo: dockContainer.centerYAnchor),
             
-            fixedStack.leadingAnchor.constraint(equalTo: dockContainer.leadingAnchor, constant: 10),
-            fixedStack.centerYAnchor.constraint(equalTo: dockContainer.centerYAnchor),
-            fixedStack.heightAnchor.constraint(equalTo: dockContainer.heightAnchor),
+            separator.leadingAnchor.constraint(equalTo: controlsStack.trailingAnchor, constant: 8),
+            separator.centerYAnchor.constraint(equalTo: dockContainer.centerYAnchor),
+            separator.widthAnchor.constraint(equalToConstant: 1),
+            separator.heightAnchor.constraint(equalToConstant: 24),
             
-            
-            scrollView.leadingAnchor.constraint(equalTo: fixedStack.trailingAnchor, constant: 6),
+            scrollView.leadingAnchor.constraint(equalTo: separator.trailingAnchor, constant: 6),
             scrollView.trailingAnchor.constraint(equalTo: dockContainer.trailingAnchor, constant: -10),
             scrollView.topAnchor.constraint(equalTo: dockContainer.topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: dockContainer.bottomAnchor),
             
-            
-            
-            
-            
-            windowStack.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
             windowStack.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
             windowStack.bottomAnchor.constraint(equalTo: scrollView.contentView.bottomAnchor),
             windowStack.heightAnchor.constraint(equalTo: scrollView.contentView.heightAnchor)
         ])
+        
+        leadingConstraint = dockContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12)
+        trailingConstraint = dockContainer.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12)
+        widthConstraint = dockContainer.widthAnchor.constraint(equalToConstant: 66 + 8) 
+        
+        leadingConstraint.priority = .required
+        trailingConstraint.priority = .required
+        widthConstraint.priority = .defaultLow
+        
+        leadingConstraint.isActive = true
+        trailingConstraint.isActive = true
+        widthConstraint.isActive = true
+    }
+    
+    private func toggleCollapse(to target: LayoutState) {
+        var newState = target
+        
+        if layoutState == target { 
+            return 
+        } else if layoutState == .collapsedLeft && target == .collapsedRight {
+             newState = .expanded
+        } else if layoutState == .collapsedRight && target == .collapsedLeft {
+             newState = .expanded
+        }
+        
+        layoutState = newState
+        animateLayout()
+    }
+    
+    private func animateLayout() {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.3
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            
+            switch layoutState {
+            case .expanded:
+                leadingConstraint.animator().constant = 12
+                trailingConstraint.animator().constant = -12
+                leadingConstraint.animator().priority = .required
+                trailingConstraint.animator().priority = .required
+                widthConstraint.animator().priority = .defaultLow
+                scrollView.animator().alphaValue = 1
+                
+            case .collapsedLeft:
+                leadingConstraint.animator().constant = 12
+                leadingConstraint.animator().priority = .required
+                trailingConstraint.animator().priority = .defaultLow
+                widthConstraint.animator().priority = .required
+                scrollView.animator().alphaValue = 0
+                
+            case .collapsedRight:
+                trailingConstraint.animator().constant = -12
+                trailingConstraint.animator().priority = .required
+                leadingConstraint.animator().priority = .defaultLow
+                widthConstraint.animator().priority = .required
+                scrollView.animator().alphaValue = 0
+            }
+        }
     }
 
     func updateWindows(_ windows: [WindowInfo], onAction: @escaping (WindowInfo, WindowAction) -> Void) {
@@ -223,7 +287,6 @@ class TaskbarView: NSView {
         currentWindows = windows
         
         DispatchQueue.main.async {
-            
             let existingViews = self.windowStack.arrangedSubviews.compactMap { $0 as? WindowItemView }
             for view in existingViews {
                 if !windows.contains(where: { $0.id == view.info.id }) {

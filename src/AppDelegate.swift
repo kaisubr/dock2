@@ -49,16 +49,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     @objc private func toggleVisibility() {
         isManuallyHidden.toggle()
-        if isManuallyHidden {
-            window.orderOut(nil)
-        } else {
-            window.orderFrontRegardless()
-        }
         updateMenu()
+        
+        if !isManuallyHidden {
+            refreshWindows()
+            window.orderFront(nil)
+        }
+        
+        animateWindowPosition()
+    }
+    
+    private func animateWindowPosition() {
+        
+        
+        let screen = window.screen ?? NSScreen.main ?? NSScreen.screens.first
+        guard let currentScreen = screen else { return }
+        
+        let screenFrame = currentScreen.frame
+        let barHeight: CGFloat = 64
+        let bottomMargin: CGFloat = 12
+        
+        let targetY = isManuallyHidden ? (screenFrame.minY - barHeight) : (screenFrame.minY + bottomMargin)
+        let newFrame = NSRect(x: screenFrame.minX, y: targetY, width: screenFrame.width, height: barHeight)
+        
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.4
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.animator().setFrame(newFrame, display: true)
+        }
     }
 
     private func setupWindow() {
-        
         let screen = NSScreen.main ?? NSScreen.screens.first
         let screenFrame = screen?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         
