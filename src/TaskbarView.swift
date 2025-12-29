@@ -159,7 +159,6 @@ class TaskbarView: NSView {
         visualEffectView.translatesAutoresizingMaskIntoConstraints = false
         dockContainer.addSubview(visualEffectView)
         
-        
         let navStack = NSStackView(views: [leftButton, rightButton])
         navStack.orientation = .horizontal
         navStack.spacing = 2
@@ -198,25 +197,28 @@ class TaskbarView: NSView {
         
         NSLayoutConstraint.activate([
             dockContainer.centerYAnchor.constraint(equalTo: centerYAnchor),
-            dockContainer.heightAnchor.constraint(equalToConstant: 52),
+            dockContainer.heightAnchor.constraint(equalToConstant: 58),
             
             visualEffectView.topAnchor.constraint(equalTo: dockContainer.topAnchor),
             visualEffectView.bottomAnchor.constraint(equalTo: dockContainer.bottomAnchor),
             visualEffectView.leadingAnchor.constraint(equalTo: dockContainer.leadingAnchor),
             visualEffectView.trailingAnchor.constraint(equalTo: dockContainer.trailingAnchor),
             
-            controlsStack.leadingAnchor.constraint(equalTo: dockContainer.leadingAnchor, constant: 8),
-            controlsStack.centerYAnchor.constraint(equalTo: dockContainer.centerYAnchor),
             
-            separator.leadingAnchor.constraint(equalTo: controlsStack.trailingAnchor, constant: 8),
+            scrollView.leadingAnchor.constraint(equalTo: dockContainer.leadingAnchor, constant: 10),
+            scrollView.trailingAnchor.constraint(equalTo: separator.leadingAnchor, constant: -6),
+            scrollView.topAnchor.constraint(equalTo: dockContainer.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: dockContainer.bottomAnchor),
+
+            
+            separator.trailingAnchor.constraint(equalTo: controlsStack.leadingAnchor, constant: -8),
             separator.centerYAnchor.constraint(equalTo: dockContainer.centerYAnchor),
             separator.widthAnchor.constraint(equalToConstant: 1),
             separator.heightAnchor.constraint(equalToConstant: 24),
             
-            scrollView.leadingAnchor.constraint(equalTo: separator.trailingAnchor, constant: 6),
-            scrollView.trailingAnchor.constraint(equalTo: dockContainer.trailingAnchor, constant: -10),
-            scrollView.topAnchor.constraint(equalTo: dockContainer.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: dockContainer.bottomAnchor),
+            
+            controlsStack.trailingAnchor.constraint(equalTo: dockContainer.trailingAnchor, constant: -8),
+            controlsStack.centerYAnchor.constraint(equalTo: dockContainer.centerYAnchor),
             
             windowStack.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
             windowStack.bottomAnchor.constraint(equalTo: scrollView.contentView.bottomAnchor),
@@ -225,7 +227,8 @@ class TaskbarView: NSView {
         
         leadingConstraint = dockContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12)
         trailingConstraint = dockContainer.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12)
-        widthConstraint = dockContainer.widthAnchor.constraint(equalToConstant: 66 + 8) 
+        
+        widthConstraint = dockContainer.widthAnchor.constraint(equalToConstant: 84) 
         
         leadingConstraint.priority = .required
         trailingConstraint.priority = .required

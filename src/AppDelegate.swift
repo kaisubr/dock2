@@ -1,5 +1,6 @@
 
 import AppKit
+import ApplicationServices
 
 @_silgen_name("_AXUIElementGetWindow")
 func _AXUIElementGetWindow(_ element: AXUIElement, _ identifier: UnsafeMutablePointer<CGWindowID>) -> AXError
@@ -9,6 +10,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var taskbarView: TaskbarView!
     var statusItem: NSStatusItem?
     var isManuallyHidden = false
+    
+    private var pendingResizes: Set<CGWindowID> = []
+    private let resizeLock = NSLock()
+    
+    private let dockVisibleHeight: CGFloat = 64
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -60,14 +66,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     private func animateWindowPosition() {
-        
-        
         let screen = window.screen ?? NSScreen.main ?? NSScreen.screens.first
         guard let currentScreen = screen else { return }
         
         let screenFrame = currentScreen.frame
         let barHeight: CGFloat = 64
-        let bottomMargin: CGFloat = 12
+        let bottomMargin: CGFloat = 0
         
         let targetY = isManuallyHidden ? (screenFrame.minY - barHeight) : (screenFrame.minY + bottomMargin)
         let newFrame = NSRect(x: screenFrame.minX, y: targetY, width: screenFrame.width, height: barHeight)
@@ -84,7 +88,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let screenFrame = screen?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         
         let barHeight: CGFloat = 64 
-        let bottomMargin: CGFloat = 12
+        let bottomMargin: CGFloat = 0
         
         let rect = NSRect(x: screenFrame.origin.x, y: screenFrame.origin.y + bottomMargin, width: screenFrame.width, height: barHeight)
         
@@ -123,12 +127,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let allWindows = CGWindowListCopyWindowInfo(allOptions, kCGNullWindowID) as? [[String: Any]] else { return }
         
         let currentPID = ProcessInfo.processInfo.processIdentifier
+        
+        let screen = NSScreen.main ?? NSScreen.screens.first!
+        let screenHeight = screen.frame.height
+        let screenWidth = screen.frame.width
+        let limitY = screenHeight - dockVisibleHeight
+
         var windows = allWindows.compactMap { dict -> WindowInfo? in
             guard let layer = dict[kCGWindowLayer as String] as? Int, layer == 0,
                   let pid = dict[kCGWindowOwnerPID as String] as? Int32, pid != currentPID,
                   let id = dict[kCGWindowNumber as String] as? CGWindowID else { return nil }
             
             let isOnCurrentSpace = onScreenIDs.contains(id)
+            
+            if isOnCurrentSpace {
+                if let boundsDict = dict[kCGWindowBounds as String] as? [String: Any],
+                   let bounds = CGRect(dictionaryRepresentation: boundsDict as CFDictionary) {
+                    
+                    let dockRect = CGRect(x: 0, y: limitY, width: screenWidth, height: dockVisibleHeight)
+                    
+                    if bounds.intersects(dockRect) && bounds.minY < limitY {
+                        self.resizeLock.lock()
+                        let isPending = self.pendingResizes.contains(id)
+                        self.resizeLock.unlock()
+                        
+                        if !isPending {
+                            self.constrainWindow(pid: pid, id: id, limitY: limitY)
+                        }
+                    }
+                }
+            }
+            
             if isOnCurrentSpace || isWindowMinimized(pid: pid, id: id) {
                 var info = WindowInfo(dict: dict)
                 info?.isMinimized = !isOnCurrentSpace
@@ -146,6 +175,59 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         self.taskbarView.updateWindows(windows) { [weak self] info, action in
             self?.handleWindowAction(info: info, action: action)
+        }
+    }
+    
+    private func constrainWindow(pid: Int32, id: CGWindowID, limitY: CGFloat) {
+        resizeLock.lock()
+        pendingResizes.insert(id)
+        resizeLock.unlock()
+
+        DispatchQueue.global(qos: .userInteractive).asyncAfter(deadline: .now() + 1.5) {
+            defer {
+                self.resizeLock.lock()
+                self.pendingResizes.remove(id)
+                self.resizeLock.unlock()
+            }
+            
+            let appRef = AXUIElementCreateApplication(pid)
+            var value: AnyObject?
+            let result = AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &value)
+            guard result == .success, let list = value as? [AXUIElement] else { return }
+            
+            for win in list {
+                var winID: CGWindowID = 0
+                _ = _AXUIElementGetWindow(win, &winID)
+                if winID == id {
+                    var posValue: AnyObject?
+                    var sizeValue: AnyObject?
+                    AXUIElementCopyAttributeValue(win, kAXPositionAttribute as CFString, &posValue)
+                    AXUIElementCopyAttributeValue(win, kAXSizeAttribute as CFString, &sizeValue)
+                    
+                    var pos = CGPoint.zero
+                    var size = CGSize.zero
+                    
+                    if let pVal = posValue as! AXValue? {
+                         AXValueGetValue(pVal, .cgPoint, &pos)
+                    }
+                    if let sVal = sizeValue as! AXValue? {
+                         AXValueGetValue(sVal, .cgSize, &size)
+                    }
+                    
+                    let currentFrame = CGRect(origin: pos, size: size)
+                    
+                    if currentFrame.maxY > limitY && currentFrame.minY < limitY {
+                        let newHeight = limitY - currentFrame.minY
+                        if newHeight < 50 { return }
+                        
+                        var newSize = CGSize(width: currentFrame.width, height: newHeight)
+                        if let val = AXValueCreate(.cgSize, &newSize) {
+                            AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, val)
+                        }
+                    }
+                    return
+                }
+            }
         }
     }
 
