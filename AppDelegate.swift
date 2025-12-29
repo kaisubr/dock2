@@ -8,13 +8,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSPanel!
     var taskbarView: TaskbarView!
     var statusItem: NSStatusItem?
+    var isManuallyHidden = false
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         setupStatusItem()
         setupWindow()
         
-        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
             self.refreshWindows()
         }
         
@@ -22,13 +23,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self,
             selector: #selector(refreshWindows),
             name: NSWorkspace.activeSpaceDidChangeNotification,
-            object: nil
-        )
-        
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleScreenChange),
-            name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
         
@@ -40,12 +34,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let button = statusItem?.button {
             button.image = NSImage(systemSymbolName: "menubar.dock.rectangle", accessibilityDescription: "MiniBar")
         }
-        
+        updateMenu()
+    }
+    
+    private func updateMenu() {
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "MiniBar Active", action: nil, keyEquivalent: ""))
+        let toggleTitle = isManuallyHidden ? "Show MiniBar" : "Hide MiniBar"
+        let toggleItem = NSMenuItem(title: toggleTitle, action: #selector(toggleVisibility), keyEquivalent: "h")
+        menu.addItem(toggleItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit MiniBar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         statusItem?.menu = menu
+    }
+    
+    @objc private func toggleVisibility() {
+        isManuallyHidden.toggle()
+        if isManuallyHidden {
+            window.orderOut(nil)
+        } else {
+            window.orderFrontRegardless()
+        }
+        updateMenu()
     }
 
     private func setupWindow() {
@@ -70,23 +79,44 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.backgroundColor = .clear
         window.isOpaque = false
         window.hasShadow = false
-        
-        // Enforce dark appearance so text is always light and background is dark/blurred
         window.appearance = NSAppearance(named: .vibrantDark)
         
         taskbarView = TaskbarView(frame: window.contentView!.bounds)
+        taskbarView.onHidePressed = { [weak self] in self?.toggleVisibility() }
         window.contentView = taskbarView
         
         window.orderFrontRegardless()
     }
-    
-    @objc private func handleScreenChange() {
-        let screen = NSScreen.screens.first ?? NSScreen.main
-        let screenFrame = screen?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let barHeight: CGFloat = 64
-        let bottomMargin: CGFloat = 12
-        let newRect = NSRect(x: screenFrame.origin.x, y: screenFrame.origin.y + bottomMargin, width: screenFrame.width, height: barHeight)
-        window.setFrame(newRect, display: true)
+
+    @objc private func refreshWindows() {
+        if isManuallyHidden { return }
+        
+        let onScreenOptions: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        let onScreenList = CGWindowListCopyWindowInfo(onScreenOptions, kCGNullWindowID) as? [[String: Any]] ?? []
+        
+        let onScreenIDs = Set(onScreenList.compactMap { $0[kCGWindowNumber as String] as? CGWindowID })
+        let allOptions: CGWindowListOption = [.excludeDesktopElements, .optionAll]
+        guard let allWindows = CGWindowListCopyWindowInfo(allOptions, kCGNullWindowID) as? [[String: Any]] else { return }
+        
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        var windows = allWindows.compactMap { dict -> WindowInfo? in
+            guard let layer = dict[kCGWindowLayer as String] as? Int, layer == 0,
+                  let pid = dict[kCGWindowOwnerPID as String] as? Int32, pid != currentPID,
+                  let id = dict[kCGWindowNumber as String] as? CGWindowID else { return nil }
+            
+            let isOnCurrentSpace = onScreenIDs.contains(id)
+            if isOnCurrentSpace || isWindowMinimized(pid: pid, id: id) {
+                var info = WindowInfo(dict: dict)
+                info?.isMinimized = !isOnCurrentSpace
+                return info
+            }
+            return nil
+        }
+        
+        windows.sort { $0.ownerName.lowercased() < $1.ownerName.lowercased() }
+        self.taskbarView.updateWindows(windows) { [weak self] info, action in
+            self?.handleWindowAction(info: info, action: action)
+        }
     }
 
     private func isWindowMinimized(pid: Int32, id: CGWindowID) -> Bool {
@@ -94,7 +124,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         var value: AnyObject?
         let result = AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &value)
         guard result == .success, let list = value as? [AXUIElement] else { return false }
-        
         for win in list {
             var winID: CGWindowID = 0
             _ = _AXUIElementGetWindow(win, &winID)
@@ -107,96 +136,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
-    @objc private func refreshWindows() {
-        let onScreenOptions: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-        let onScreenList = CGWindowListCopyWindowInfo(onScreenOptions, kCGNullWindowID) as? [[String: Any]] ?? []
-        let onScreenIDs = Set(onScreenList.compactMap { $0[kCGWindowNumber as String] as? CGWindowID })
-        
-        let allOptions: CGWindowListOption = [.excludeDesktopElements, .optionAll]
-        guard let allWindows = CGWindowListCopyWindowInfo(allOptions, kCGNullWindowID) as? [[String: Any]] else { return }
-        
-        let currentPID = ProcessInfo.processInfo.processIdentifier
-        
-        var windows = allWindows.compactMap { dict -> WindowInfo? in
-            guard let layer = dict[kCGWindowLayer as String] as? Int, layer == 0,
-                  let pid = dict[kCGWindowOwnerPID as String] as? Int32, pid != currentPID,
-                  let id = dict[kCGWindowNumber as String] as? CGWindowID else {
-                return nil
-            }
-            
-            let isOnCurrentSpace = onScreenIDs.contains(id)
-            let isMinimized = isWindowMinimized(pid: pid, id: id)
-            
-            if isOnCurrentSpace || isMinimized {
-                var info = WindowInfo(dict: dict)
-                info?.isMinimized = isMinimized
-                return info
-            }
-            return nil
-        }
-        
-        windows.sort {
-            if $0.ownerName.lowercased() != $1.ownerName.lowercased() {
-                return $0.ownerName.lowercased() < $1.ownerName.lowercased()
-            }
-            return $0.title.lowercased() < $1.title.lowercased()
-        }
-        
-        self.taskbarView.updateWindows(windows) { [weak self] info, action in
-            self?.handleWindowAction(info: info, action: action)
-        }
-    }
-
     private func handleWindowAction(info: WindowInfo, action: WindowAction) {
         if action == .quit {
             NSRunningApplication(processIdentifier: info.pid)?.terminate()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.refreshWindows() }
             return
         }
-
         let appRef = AXUIElementCreateApplication(info.pid)
         var value: AnyObject?
-        let result = AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &value)
-        guard result == .success, let list = value as? [AXUIElement] else { return }
-        
+        AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &value)
+        guard let list = value as? [AXUIElement] else { return }
         for win in list {
             var id: CGWindowID = 0
             _ = _AXUIElementGetWindow(win, &id)
-            
             if id == info.id {
-                switch action {
-                case .minimize:
-                    AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, true as CFTypeRef)
-                case .open:
+                if action == .minimize { 
+                    AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, true as CFTypeRef) 
+                } else {
                     AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, false as CFTypeRef)
                     AXUIElementPerformAction(win, kAXRaiseAction as CFString)
-                    NSRunningApplication(processIdentifier: info.pid)?.activate(options: .activateIgnoringOtherApps)
-                case .toggle:
-                    let isFrontmost = checkIsFrontmost(id: info.id)
-                    if isFrontmost {
-                        AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, true as CFTypeRef)
-                    } else {
-                        AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, false as CFTypeRef)
-                        AXUIElementPerformAction(win, kAXRaiseAction as CFString)
-                        NSRunningApplication(processIdentifier: info.pid)?.activate(options: .activateIgnoringOtherApps)
+                    if let app = NSRunningApplication(processIdentifier: info.pid) {
+                        if #available(macOS 14.0, *) {
+                            app.activate()
+                        } else {
+                            app.activate(options: .activateIgnoringOtherApps)
+                        }
                     }
-                default: break
                 }
                 break
             }
         }
-        self.refreshWindows()
-    }
-
-    private func checkIsFrontmost(id: CGWindowID) -> Bool {
-        let onScreenOptions: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-        let onScreenList = CGWindowListCopyWindowInfo(onScreenOptions, kCGNullWindowID) as? [[String: Any]] ?? []
-        let currentPID = ProcessInfo.processInfo.processIdentifier
-        let frontmostWindow = onScreenList.first { dict in
-            let pid = dict[kCGWindowOwnerPID as String] as? Int32 ?? 0
-            let layer = dict[kCGWindowLayer as String] as? Int ?? -1
-            return pid != currentPID && layer == 0
-        }
-        return (frontmostWindow?[kCGWindowNumber as String] as? CGWindowID == id)
     }
 }

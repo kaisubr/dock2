@@ -1,17 +1,58 @@
 
 import AppKit
 
+class HideButton: NSView {
+    var onClick: (() -> Void)?
+    private let imageView = NSImageView()
+    private var isHovered = false { didSet { updateBackground() } }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        
+        imageView.image = NSImage(systemSymbolName: "chevron.down.circle.fill", accessibilityDescription: "Hide")
+        imageView.contentTintColor = .white.withAlphaComponent(0.6)
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(imageView)
+        
+        NSLayoutConstraint.activate([
+            imageView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            imageView.widthAnchor.constraint(equalToConstant: 24),
+            imageView.heightAnchor.constraint(equalToConstant: 24),
+            widthAnchor.constraint(equalToConstant: 40),
+            heightAnchor.constraint(equalToConstant: 44)
+        ])
+        
+        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        updateBackground()
+    }
+    
+    required init?(coder: NSCoder) { fatalError() }
+    
+    private func updateBackground() {
+        layer?.backgroundColor = isHovered ? NSColor.white.withAlphaComponent(0.2).cgColor : NSColor.clear.cgColor
+    }
+    
+    override func mouseEntered(with event: NSEvent) { isHovered = true }
+    override func mouseExited(with event: NSEvent) { isHovered = false }
+    override func mouseDown(with event: NSEvent) { layer?.backgroundColor = NSColor.white.withAlphaComponent(0.3).cgColor }
+    override func mouseUp(with event: NSEvent) {
+        updateBackground()
+        if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
+    }
+}
+
 class WindowItemView: NSView {
     let info: WindowInfo
     private let onClick: () -> Void
     private let onRightClick: (NSView) -> Void
-    
     private let iconView = NSImageView()
     private let ownerLabel = NSTextField(labelWithString: "")
     private let titleLabel = NSTextField(labelWithString: "")
-    private var isHovered = false {
-        didSet { updateBackground() }
-    }
+    private var isHovered = false { didSet { updateBackground() } }
 
     init(info: WindowInfo, onClick: @escaping () -> Void, onRightClick: @escaping (NSView) -> Void) {
         self.info = info
@@ -19,7 +60,7 @@ class WindowItemView: NSView {
         self.onRightClick = onRightClick
         super.init(frame: .zero)
         setupUI()
-        setupTrackingArea()
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
     }
     
     required init?(coder: NSCoder) { fatalError() }
@@ -27,91 +68,62 @@ class WindowItemView: NSView {
     private func setupUI() {
         wantsLayer = true
         layer?.cornerRadius = 6
-        
         iconView.image = info.icon
-        iconView.imageScaling = .scaleProportionallyUpOrDown
-        iconView.translatesAutoresizingMaskIntoConstraints = false
         iconView.alphaValue = info.isMinimized ? 0.4 : 1.0
+        iconView.translatesAutoresizingMaskIntoConstraints = false
         
         ownerLabel.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
-        ownerLabel.textColor = info.isMinimized ? NSColor.white.withAlphaComponent(0.4) : .white
+        ownerLabel.textColor = info.isMinimized ? .white.withAlphaComponent(0.4) : .white
         ownerLabel.lineBreakMode = .byTruncatingTail
         ownerLabel.stringValue = info.ownerName
-        ownerLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         
         titleLabel.font = NSFont.systemFont(ofSize: 9, weight: .regular)
-        titleLabel.textColor = info.isMinimized ? NSColor.white.withAlphaComponent(0.25) : NSColor(white: 0.9, alpha: 0.7)
+        titleLabel.textColor = info.isMinimized ? .white.withAlphaComponent(0.25) : NSColor(white: 0.9, alpha: 0.7)
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.stringValue = info.title
-        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         
         let textStack = NSStackView(views: [ownerLabel, titleLabel])
         textStack.orientation = .vertical
-        textStack.spacing = 0
         textStack.alignment = .leading
-        textStack.translatesAutoresizingMaskIntoConstraints = false
+        textStack.spacing = 0
         
         let mainStack = NSStackView(views: [iconView, textStack])
-        mainStack.orientation = .horizontal
         mainStack.spacing = 10
         mainStack.alignment = .centerY
         mainStack.translatesAutoresizingMaskIntoConstraints = false
-        
         addSubview(mainStack)
         
         NSLayoutConstraint.activate([
             iconView.widthAnchor.constraint(equalToConstant: 28),
             iconView.heightAnchor.constraint(equalToConstant: 28),
-            
             mainStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
             mainStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
-            mainStack.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-            mainStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
-            
-            // Constrain the width of the whole item
+            mainStack.centerYAnchor.constraint(equalTo: centerYAnchor),
             widthAnchor.constraint(lessThanOrEqualToConstant: 200),
-            widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
             heightAnchor.constraint(equalToConstant: 44)
         ])
-        
         updateBackground()
     }
     
     private func updateBackground() {
-        if isHovered {
-            layer?.backgroundColor = NSColor.white.withAlphaComponent(0.15).cgColor
-        } else {
-            layer?.backgroundColor = info.isMinimized ? 
-                NSColor.clear.cgColor : 
-                NSColor.white.withAlphaComponent(0.08).cgColor
-        }
-    }
-    
-    private func setupTrackingArea() {
-        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
-        addTrackingArea(area)
+        layer?.backgroundColor = isHovered ? NSColor.white.withAlphaComponent(0.15).cgColor : (info.isMinimized ? NSColor.clear.cgColor : NSColor.white.withAlphaComponent(0.08).cgColor)
     }
     
     override func mouseEntered(with event: NSEvent) { isHovered = true }
     override func mouseExited(with event: NSEvent) { isHovered = false }
-    override func mouseDown(with event: NSEvent) { layer?.backgroundColor = NSColor.white.withAlphaComponent(0.25).cgColor }
-    override func mouseUp(with event: NSEvent) {
-        updateBackground()
-        let point = convert(event.locationInWindow, from: nil)
-        if bounds.contains(point) { onClick() }
-    }
+    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick() } }
     override func rightMouseDown(with event: NSEvent) { onRightClick(self) }
 }
 
 class TaskbarView: NSView {
+    var onHidePressed: (() -> Void)?
     private let dockContainer = NSView()
-    private let visualEffectView = NSVisualEffectView()
     private let stackView = NSStackView()
+    private let hideButton = HideButton()
     private var currentWindows: [WindowInfo] = []
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        
         dockContainer.translatesAutoresizingMaskIntoConstraints = false
         dockContainer.wantsLayer = true
         dockContainer.layer?.cornerRadius = 20
@@ -120,17 +132,12 @@ class TaskbarView: NSView {
         dockContainer.layer?.borderColor = NSColor.white.withAlphaComponent(0.15).cgColor
         addSubview(dockContainer)
 
+        let visualEffectView = NSVisualEffectView()
+        visualEffectView.material = .hudWindow
         visualEffectView.blendingMode = .withinWindow
-        visualEffectView.material = .hudWindow 
         visualEffectView.state = .active
         visualEffectView.translatesAutoresizingMaskIntoConstraints = false
         dockContainer.addSubview(visualEffectView)
-
-        let overlay = NSView()
-        overlay.translatesAutoresizingMaskIntoConstraints = false
-        overlay.wantsLayer = true
-        overlay.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.2).cgColor
-        dockContainer.addSubview(overlay)
 
         stackView.orientation = .horizontal
         stackView.spacing = 6
@@ -139,23 +146,28 @@ class TaskbarView: NSView {
         stackView.translatesAutoresizingMaskIntoConstraints = false
         dockContainer.addSubview(stackView)
         
+        hideButton.onClick = { [weak self] in self?.onHidePressed?() }
+        stackView.addArrangedSubview(hideButton)
+        
+        let separator = NSView()
+        separator.wantsLayer = true
+        separator.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.1).cgColor
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        let widthC = separator.widthAnchor.constraint(equalToConstant: 1)
+        widthC.identifier = "sep"
+        widthC.isActive = true
+        separator.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        stackView.addArrangedSubview(separator)
+
         NSLayoutConstraint.activate([
             dockContainer.centerXAnchor.constraint(equalTo: centerXAnchor),
             dockContainer.centerYAnchor.constraint(equalTo: centerYAnchor),
             dockContainer.heightAnchor.constraint(equalToConstant: 52),
             dockContainer.widthAnchor.constraint(greaterThanOrEqualToConstant: 60),
-            dockContainer.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -40),
-
             visualEffectView.topAnchor.constraint(equalTo: dockContainer.topAnchor),
             visualEffectView.bottomAnchor.constraint(equalTo: dockContainer.bottomAnchor),
             visualEffectView.leadingAnchor.constraint(equalTo: dockContainer.leadingAnchor),
             visualEffectView.trailingAnchor.constraint(equalTo: dockContainer.trailingAnchor),
-            
-            overlay.topAnchor.constraint(equalTo: dockContainer.topAnchor),
-            overlay.bottomAnchor.constraint(equalTo: dockContainer.bottomAnchor),
-            overlay.leadingAnchor.constraint(equalTo: dockContainer.leadingAnchor),
-            overlay.trailingAnchor.constraint(equalTo: dockContainer.trailingAnchor),
-            
             stackView.topAnchor.constraint(equalTo: dockContainer.topAnchor),
             stackView.bottomAnchor.constraint(equalTo: dockContainer.bottomAnchor),
             stackView.leadingAnchor.constraint(equalTo: dockContainer.leadingAnchor),
@@ -170,33 +182,24 @@ class TaskbarView: NSView {
         currentWindows = windows
         
         DispatchQueue.main.async {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.25
-                context.allowsImplicitAnimation = true
-                
-                for subview in self.stackView.arrangedSubviews {
-                    if let itemView = subview as? WindowItemView, !windows.contains(where: { $0.id == itemView.info.id }) {
-                        itemView.animator().alphaValue = 0
-                        self.stackView.removeArrangedSubview(itemView)
-                        itemView.removeFromSuperview()
-                    }
+            let existingViews = self.stackView.arrangedSubviews.compactMap { $0 as? WindowItemView }
+            for view in existingViews {
+                if !windows.contains(where: { $0.id == view.info.id }) {
+                    self.stackView.removeArrangedSubview(view)
+                    view.removeFromSuperview()
                 }
-                
-                for (index, info) in windows.enumerated() {
-                    if let existing = self.stackView.arrangedSubviews.compactMap({ $0 as? WindowItemView }).first(where: { $0.info.id == info.id }) {
-                        if existing.info != info {
-                            let newView = WindowItemView(info: info, onClick: { onAction(info, .toggle) }, onRightClick: { v in self.showContextMenu(for: info, in: v, onAction: onAction) })
-                            let oldIdx = self.stackView.arrangedSubviews.firstIndex(of: existing)!
-                            self.stackView.removeArrangedSubview(existing)
-                            existing.removeFromSuperview()
-                            self.stackView.insertArrangedSubview(newView, at: oldIdx)
-                        }
-                    } else {
-                        let itemView = WindowItemView(info: info, onClick: { onAction(info, .toggle) }, onRightClick: { v in self.showContextMenu(for: info, in: v, onAction: onAction) })
-                        itemView.alphaValue = 0
-                        self.stackView.insertArrangedSubview(itemView, at: min(index, self.stackView.arrangedSubviews.count))
-                        itemView.animator().alphaValue = 1.0
+            }
+            
+            for info in windows {
+                if let existing = existingViews.first(where: { $0.info.id == info.id }) {
+                    if existing.info != info {
+                        let idx = self.stackView.arrangedSubviews.firstIndex(of: existing)!
+                        self.stackView.removeArrangedSubview(existing)
+                        existing.removeFromSuperview()
+                        self.stackView.insertArrangedSubview(WindowItemView(info: info, onClick: { onAction(info, .toggle) }, onRightClick: { v in self.showContextMenu(for: info, in: v, onAction: onAction) }), at: idx)
                     }
+                } else {
+                    self.stackView.addArrangedSubview(WindowItemView(info: info, onClick: { onAction(info, .toggle) }, onRightClick: { v in self.showContextMenu(for: info, in: v, onAction: onAction) }))
                 }
             }
         }
@@ -205,21 +208,13 @@ class TaskbarView: NSView {
     private func showContextMenu(for info: WindowInfo, in view: NSView, onAction: @escaping (WindowInfo, WindowAction) -> Void) {
         let menu = NSMenu()
         menu.autoenablesItems = false
-        
-        let actions: [(String, WindowAction)] = [("Open", .open), ("Minimize", .minimize)]
+        let actions: [(String, WindowAction)] = [("Open", .open), ("Minimize", .minimize), ("Quit \(info.ownerName)", .quit)]
         for (title, action) in actions {
             let item = NSMenuItem(title: title, action: #selector(contextMenuHandler(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = ["info": info, "action": action, "callback": onAction]
             menu.addItem(item)
         }
-        
-        menu.addItem(NSMenuItem.separator())
-        let quitItem = NSMenuItem(title: "Quit \(info.ownerName)", action: #selector(contextMenuHandler(_:)), keyEquivalent: "")
-        quitItem.target = self
-        quitItem.representedObject = ["info": info, "action": WindowAction.quit, "callback": onAction]
-        menu.addItem(quitItem)
-        
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.height + 8), in: view)
     }
     
@@ -232,6 +227,4 @@ class TaskbarView: NSView {
     }
 }
 
-enum WindowAction {
-    case toggle, open, minimize, quit
-}
+enum WindowAction { case toggle, open, minimize, quit }
