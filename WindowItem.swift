@@ -6,6 +6,7 @@ struct WindowInfo: Equatable {
     let pid: Int32
     let ownerName: String
     let title: String
+    let icon: NSImage?
     var isMinimized: Bool
     
     init?(dict: [String: Any]) {
@@ -20,9 +21,15 @@ struct WindowInfo: Equatable {
         self.ownerName = owner
         
         let rawTitle = dict[kCGWindowName as String] as? String ?? ""
-        // If title is empty, use owner name as title and "System" or similar as owner
         self.title = rawTitle.isEmpty ? owner : rawTitle
         self.isMinimized = false
+        
+        // Fetch the application icon
+        if let app = NSRunningApplication(processIdentifier: pid) {
+            self.icon = app.icon
+        } else {
+            self.icon = NSWorkspace.shared.icon(forFileType: NSFileTypeForHFSTypeCode(OSType(kGenericApplicationIcon)))
+        }
     }
 
     static func == (lhs: WindowInfo, rhs: WindowInfo) -> Bool {

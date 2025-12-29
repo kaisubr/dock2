@@ -23,30 +23,53 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
         
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleScreenChange),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
+        
         refreshWindows()
     }
 
     private func setupWindow() {
-        let screen = NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        // Use the primary screen (index 0) to ensure we get the main display
+        let screen = NSScreen.screens.first ?? NSScreen.main
+        let screenFrame = screen?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let barHeight: CGFloat = 40
         
+        // y: 0 is the bottom of the screen in macOS coordinates
+        let rect = NSRect(x: screenFrame.origin.x, y: screenFrame.origin.y, width: screenFrame.width, height: barHeight)
+        
         window = NSPanel(
-            contentRect: NSRect(x: screen.origin.x, y: 0, width: screen.width, height: barHeight),
+            contentRect: rect,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
         
-        window.level = .screenSaver
+        // Use statusWindow level to stay above normal windows but below system overlays
+        window.level = NSWindow.Level(Int(CGWindowLevelForKey(.statusWindow)))
         window.isFloatingPanel = true
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle, .stationary]
+        
         window.backgroundColor = .clear
         window.isOpaque = false
         window.hasShadow = false
-        window.orderFrontRegardless()
         
         taskbarView = TaskbarView(frame: window.contentView!.bounds)
         window.contentView = taskbarView
+        
+        window.orderFrontRegardless()
+    }
+    
+    @objc private func handleScreenChange() {
+        let screen = NSScreen.screens.first ?? NSScreen.main
+        let screenFrame = screen?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let barHeight: CGFloat = 40
+        let newRect = NSRect(x: screenFrame.origin.x, y: screenFrame.origin.y, width: screenFrame.width, height: barHeight)
+        window.setFrame(newRect, display: true)
     }
 
     private func isWindowMinimized(pid: Int32, id: CGWindowID) -> Bool {
@@ -132,7 +155,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     AXUIElementPerformAction(win, kAXRaiseAction as CFString)
                     NSRunningApplication(processIdentifier: info.pid)?.activate(options: .activateIgnoringOtherApps)
                 case .toggle:
-                    // Traditional taskbar behavior: if frontmost, minimize. Otherwise, bring to front.
                     let isFrontmost = checkIsFrontmost(id: info.id)
                     if isFrontmost {
                         AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, true as CFTypeRef)
@@ -146,7 +168,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 break
             }
         }
-        
         self.refreshWindows()
     }
 
