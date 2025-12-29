@@ -111,6 +111,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func handleAction(_ sender: WindowButton) {
         guard let info = sender.windowInfo else { return }
+        
+        // 1. Determine which window is currently frontmost (top-most in Z-order)
+        let onScreenOptions: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        let onScreenList = CGWindowListCopyWindowInfo(onScreenOptions, kCGNullWindowID) as? [[String: Any]] ?? []
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        
+        // Find the first window that belongs to another app and is on layer 0 (normal windows)
+        let frontmostWindow = onScreenList.first { dict in
+            let pid = dict[kCGWindowOwnerPID as String] as? Int32 ?? 0
+            let layer = dict[kCGWindowLayer as String] as? Int ?? -1
+            return pid != currentPID && layer == 0
+        }
+        let frontmostID = frontmostWindow?[kCGWindowNumber as String] as? CGWindowID
+        
+        // Check if the clicked window is the one currently being used
+        let isFrontmost = (frontmostID == info.id)
+        
+        // 2. Perform accessibility actions
         let appRef = AXUIElementCreateApplication(info.pid)
         var value: AnyObject?
         let result = AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &value)
@@ -119,23 +137,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         for win in list {
             var id: CGWindowID = 0
             _ = _AXUIElementGetWindow(win, &id)
+            
             if id == info.id {
-                var minVal: AnyObject?
-                AXUIElementCopyAttributeValue(win, kAXMinimizedAttribute as CFString, &minVal)
-                let isCurrentlyMinimized = (minVal as? Bool) == true
-                
-                if isCurrentlyMinimized {
-                    // Restore: Un-minimize, raise, and activate app
-                    AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, false as CFTypeRef)
-                    AXUIElementPerformAction(win, kAXRaiseAction as CFString)
-                    NSRunningApplication(processIdentifier: info.pid)?.activate(options: .activateIgnoringOtherApps)
-                } else {
-                    // Minimize the window
+                if isFrontmost {
+                    // Window is already active -> Minimize it
                     AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, true as CFTypeRef)
+                } else {
+                    // Window is not active (minimized or behind) -> Bring to front
+                    // Un-minimize if it was minimized
+                    AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, false as CFTypeRef)
+                    // Raise it to the top of its app's window stack
+                    AXUIElementPerformAction(win, kAXRaiseAction as CFString)
+                    // Activate the application
+                    NSRunningApplication(processIdentifier: info.pid)?.activate(options: .activateIgnoringOtherApps)
                 }
                 break
             }
         }
+        
         // Force a refresh so UI updates immediately after click
         self.refreshWindows()
     }
