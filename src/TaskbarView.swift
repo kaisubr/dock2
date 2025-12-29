@@ -232,17 +232,31 @@ class TaskbarView: NSView {
                 }
             }
             
-            
-            for info in windows {
-                if let existing = existingViews.first(where: { $0.info.id == info.id }) {
-                    if existing.info != info {
-                        let idx = self.windowStack.arrangedSubviews.firstIndex(of: existing)!
-                        self.windowStack.removeArrangedSubview(existing)
-                        existing.removeFromSuperview()
-                        self.windowStack.insertArrangedSubview(WindowItemView(info: info, onClick: { onAction(info, .toggle) }, onRightClick: { v in self.showContextMenu(for: info, in: v, onAction: onAction) }), at: idx)
+            for (index, info) in windows.enumerated() {
+                let currentViews = self.windowStack.arrangedSubviews.compactMap { $0 as? WindowItemView }
+                if let existingView = currentViews.first(where: { $0.info.id == info.id }) {
+                    if existingView.info != info {
+                        let newView = WindowItemView(info: info, onClick: { onAction(info, .toggle) }, onRightClick: { v in self.showContextMenu(for: info, in: v, onAction: onAction) })
+                        self.windowStack.removeArrangedSubview(existingView)
+                        existingView.removeFromSuperview()
+                        if index < self.windowStack.arrangedSubviews.count {
+                             self.windowStack.insertArrangedSubview(newView, at: index)
+                        } else {
+                             self.windowStack.addArrangedSubview(newView)
+                        }
+                    } else {
+                        let currentIndex = self.windowStack.arrangedSubviews.firstIndex(of: existingView)
+                        if currentIndex != index {
+                            self.windowStack.insertArrangedSubview(existingView, at: index)
+                        }
                     }
                 } else {
-                    self.windowStack.addArrangedSubview(WindowItemView(info: info, onClick: { onAction(info, .toggle) }, onRightClick: { v in self.showContextMenu(for: info, in: v, onAction: onAction) }))
+                    let newView = WindowItemView(info: info, onClick: { onAction(info, .toggle) }, onRightClick: { v in self.showContextMenu(for: info, in: v, onAction: onAction) })
+                    if index < self.windowStack.arrangedSubviews.count {
+                        self.windowStack.insertArrangedSubview(newView, at: index)
+                    } else {
+                        self.windowStack.addArrangedSubview(newView)
+                    }
                 }
             }
         }

@@ -116,7 +116,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
         
-        windows.sort { $0.ownerName.lowercased() < $1.ownerName.lowercased() }
+        windows.sort {
+            if $0.ownerName.lowercased() != $1.ownerName.lowercased() {
+                return $0.ownerName.lowercased() < $1.ownerName.lowercased()
+            }
+            return $0.title.lowercased() < $1.title.lowercased()
+        }
+        
         self.taskbarView.updateWindows(windows) { [weak self] info, action in
             self?.handleWindowAction(info: info, action: action)
         }
