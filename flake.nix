@@ -1,6 +1,6 @@
 
 {
-  description = "dock2";
+  description = "Dock2";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -31,7 +31,7 @@
             fi
             source $VENV_DIR/bin/activate
             
-            echo "-- dock2 dev environment --"
+            echo "-- Dock2 dev environment --"
             echo "SDKROOT=$SDKROOT"
             echo "VENV_DIR=$VENV_DIR"
           '';

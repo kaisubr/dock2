@@ -1,5 +1,5 @@
 
-# dock2
+# Dock2
 
 A minimal horizontal taskbar for macOS - similar to a Windows taskbar or KDE panel.
 
@@ -17,7 +17,7 @@ There is no release yet, but you can build from source.
 
 ```
 make
-./dist/dock2
+./dist/Dock2
 ```
 
 For window titles to appear, will need to enable "Screen & System Audio Recording" for the application you start the program from (e.g. Terminal/Ghostty/etc.).

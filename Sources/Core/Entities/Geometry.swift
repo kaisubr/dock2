@@ -1,0 +1,19 @@
+
+import Foundation
+
+public struct WindowRect: Equatable {
+    public let x: Double
+    public let y: Double
+    public let width: Double
+    public let height: Double
+    
+    public init(x: Double, y: Double, width: Double, height: Double) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+    
+    public var maxY: Double { y + height }
+    public var minY: Double { y }
+}

@@ -1,131 +1,10 @@
 
 import AppKit
 
-class BarButton: NSView {
-    var onClick: (() -> Void)?
-    private let imageView = NSImageView()
-    private var isHovered = false { didSet { updateBackground() } }
-
-    init(icon: String, width: CGFloat, height: CGFloat, iconSize: CGFloat = 14) {
-        super.init(frame: .zero)
-        wantsLayer = true
-        layer?.cornerRadius = 4
-        
-        imageView.image = NSImage(systemSymbolName: icon, accessibilityDescription: nil)
-        imageView.contentTintColor = .white.withAlphaComponent(0.7)
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        imageView.imageScaling = .scaleProportionallyDown
-        addSubview(imageView)
-        
-        NSLayoutConstraint.activate([
-            imageView.centerXAnchor.constraint(equalTo: centerXAnchor),
-            imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            imageView.widthAnchor.constraint(equalToConstant: iconSize),
-            imageView.heightAnchor.constraint(equalToConstant: iconSize),
-            self.widthAnchor.constraint(equalToConstant: width),
-            self.heightAnchor.constraint(equalToConstant: height)
-        ])
-        
-        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
-        addTrackingArea(area)
-        updateBackground()
-    }
-    
-    required init?(coder: NSCoder) { fatalError() }
-    
-    private func updateBackground() {
-        layer?.backgroundColor = isHovered ? NSColor.white.withAlphaComponent(0.2).cgColor : NSColor.clear.cgColor
-    }
-    
-    override func mouseEntered(with event: NSEvent) { isHovered = true }
-    override func mouseExited(with event: NSEvent) { isHovered = false }
-    override func mouseDown(with event: NSEvent) { layer?.backgroundColor = NSColor.white.withAlphaComponent(0.3).cgColor }
-    override func mouseUp(with event: NSEvent) {
-        updateBackground()
-        if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
-    }
-}
-
-class WindowItemView: NSView {
-    let info: WindowInfo
-    private let onClick: () -> Void
-    private let onRightClick: (NSView) -> Void
-    private let onHover: (Bool) -> Void
-    private let iconView = NSImageView()
-    private let ownerLabel = NSTextField(labelWithString: "")
-    private let titleLabel = NSTextField(labelWithString: "")
-    private var isHovered = false { didSet { updateBackground() } }
-
-    init(info: WindowInfo, onClick: @escaping () -> Void, onRightClick: @escaping (NSView) -> Void, onHover: @escaping (Bool) -> Void) {
-        self.info = info
-        self.onClick = onClick
-        self.onRightClick = onRightClick
-        self.onHover = onHover
-        super.init(frame: .zero)
-        setupUI()
-        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
-    }
-    
-    required init?(coder: NSCoder) { fatalError() }
-    
-    private func setupUI() {
-        wantsLayer = true
-        layer?.cornerRadius = 6
-        iconView.image = info.icon
-        iconView.alphaValue = info.isMinimized ? 0.4 : 1.0
-        iconView.translatesAutoresizingMaskIntoConstraints = false
-        
-        ownerLabel.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
-        ownerLabel.textColor = info.isMinimized ? .white.withAlphaComponent(0.4) : .white
-        ownerLabel.lineBreakMode = .byTruncatingTail
-        ownerLabel.stringValue = info.ownerName
-        
-        titleLabel.font = NSFont.systemFont(ofSize: 9, weight: .regular)
-        titleLabel.textColor = info.isMinimized ? .white.withAlphaComponent(0.25) : NSColor(white: 0.9, alpha: 0.7)
-        titleLabel.lineBreakMode = .byTruncatingTail
-        titleLabel.stringValue = info.title
-        
-        let textStack = NSStackView(views: [ownerLabel, titleLabel])
-        textStack.orientation = .vertical
-        textStack.alignment = .leading
-        textStack.spacing = 0
-        
-        let mainStack = NSStackView(views: [iconView, textStack])
-        mainStack.spacing = 10
-        mainStack.alignment = .centerY
-        mainStack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(mainStack)
-        
-        NSLayoutConstraint.activate([
-            iconView.widthAnchor.constraint(equalToConstant: 28),
-            iconView.heightAnchor.constraint(equalToConstant: 28),
-            mainStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            mainStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
-            mainStack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            widthAnchor.constraint(lessThanOrEqualToConstant: 200),
-            heightAnchor.constraint(equalToConstant: 44)
-        ])
-        updateBackground()
-    }
-    
-    private func updateBackground() {
-        layer?.backgroundColor = isHovered ? NSColor.white.withAlphaComponent(0.15).cgColor : (info.isMinimized ? NSColor.clear.cgColor : NSColor.white.withAlphaComponent(0.08).cgColor)
-    }
-    
-    override func mouseEntered(with event: NSEvent) { 
-        isHovered = true 
-        onHover(true)
-    }
-    override func mouseExited(with event: NSEvent) { 
-        isHovered = false 
-        onHover(false)
-    }
-    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick() } }
-    override func rightMouseDown(with event: NSEvent) { onRightClick(self) }
-}
-
 class TaskbarView: NSView {
     var onHidePressed: (() -> Void)?
+    var onHoverChange: ((Int32, Bool) -> Void)?
+    
     private let dockContainer = NSView()
     private let controlsStack = NSStackView()
     private let scrollView = NSScrollView()
@@ -135,18 +14,19 @@ class TaskbarView: NSView {
     private let rightButton = BarButton(icon: "chevron.right", width: 24, height: 20, iconSize: 10)
     private let hideButton = BarButton(icon: "chevron.down", width: 50, height: 20, iconSize: 14)
     
-    private var allWindows: [WindowInfo] = []
-    private var displayedWindows: [WindowInfo] = []
-    private var hoveredPids: Set<Int32> = []
-    private var pendingRemovals: [Int32: DispatchWorkItem] = [:]
+    private var allWindows: [WindowModel] = []
+    private var displayedWindows: [WindowModel] = []
     
-    private var windowActionCallback: ((WindowInfo, WindowAction) -> Void)?
+    private var windowActionCallback: ((WindowModel, WindowAction) -> Void)?
     
     private var layoutState: LayoutState = .expanded
     
     private var leadingConstraint: NSLayoutConstraint!
     private var trailingConstraint: NSLayoutConstraint!
     private var widthConstraint: NSLayoutConstraint!
+    
+    
+    private var pendingRemovals: [Int32: DispatchWorkItem] = [:]
 
     enum LayoutState { case expanded, collapsedLeft, collapsedRight }
 
@@ -252,7 +132,6 @@ class TaskbarView: NSView {
     
     private func toggleCollapse(to target: LayoutState) {
         var newState = target
-        
         if layoutState == target { 
             return 
         } else if layoutState == .collapsedLeft && target == .collapsedRight {
@@ -260,7 +139,6 @@ class TaskbarView: NSView {
         } else if layoutState == .collapsedRight && target == .collapsedLeft {
              newState = .expanded
         }
-        
         layoutState = newState
         animateLayout()
     }
@@ -269,7 +147,6 @@ class TaskbarView: NSView {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.3
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            
             switch layoutState {
             case .expanded:
                 leadingConstraint.animator().constant = 12
@@ -278,14 +155,12 @@ class TaskbarView: NSView {
                 trailingConstraint.animator().priority = .required
                 widthConstraint.animator().priority = .defaultLow
                 scrollView.animator().alphaValue = 1
-                
             case .collapsedLeft:
                 leadingConstraint.animator().constant = 12
                 leadingConstraint.animator().priority = .required
                 trailingConstraint.animator().priority = .defaultLow
                 widthConstraint.animator().priority = .required
                 scrollView.animator().alphaValue = 0
-                
             case .collapsedRight:
                 trailingConstraint.animator().constant = -12
                 trailingConstraint.animator().priority = .required
@@ -296,51 +171,26 @@ class TaskbarView: NSView {
         }
     }
 
-    func updateWindows(_ windows: [WindowInfo], onAction: @escaping (WindowInfo, WindowAction) -> Void) {
+    func updateWindows(_ windows: [WindowModel], onAction: @escaping (WindowModel, WindowAction) -> Void) {
         self.allWindows = windows
         self.windowActionCallback = onAction
-        render()
+        
+        
+        
+        render(windows: windows)
     }
     
-    private func render() {
-        let hideGhost = ConfigManager.shared.getHideGhostWindows()
-        
-        let grouped = Dictionary(grouping: allWindows, by: { $0.pid })
-        var visibleIDs = Set<CGWindowID>()
-        
-        for (pid, appWindows) in grouped {
-            let isHovered = hoveredPids.contains(pid)
-            let hasTitledWindow = appWindows.contains { $0.hasTitle }
-            
-            for win in appWindows {
-                if isHovered {
-                    visibleIDs.insert(win.id)
-                } else {
-                    if hideGhost {
-                        if win.hasTitle {
-                            visibleIDs.insert(win.id)
-                        } else {
-                            if !hasTitledWindow {
-                                visibleIDs.insert(win.id)
-                            }
-                        }
-                    } else {
-                        visibleIDs.insert(win.id)
-                    }
-                }
-            }
-        }
-        
-        let targetWindows = allWindows.filter { visibleIDs.contains($0.id) }
-        
-        if displayedWindows == targetWindows { return }
-        displayedWindows = targetWindows
+    private func render(windows: [WindowModel]) {
+        if displayedWindows == windows { return }
+        displayedWindows = windows
         
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+            
             let existingViews = self.windowStack.arrangedSubviews.compactMap { $0 as? WindowItemView }
             for view in existingViews {
-                if !self.displayedWindows.contains(where: { $0.id == view.info.id }) {
+                
+                if !self.displayedWindows.contains(where: { $0.id == view.model.id }) {
                     self.windowStack.removeArrangedSubview(view)
                     view.removeFromSuperview()
                 }
@@ -348,8 +198,8 @@ class TaskbarView: NSView {
             
             for (index, info) in self.displayedWindows.enumerated() {
                 let currentViews = self.windowStack.arrangedSubviews.compactMap { $0 as? WindowItemView }
-                if let existingView = currentViews.first(where: { $0.info.id == info.id }) {
-                    if existingView.info != info {
+                if let existingView = currentViews.first(where: { $0.model.id == info.id }) {
+                    if existingView.model != info {
                         let newView = self.createWindowView(for: info)
                         self.windowStack.removeArrangedSubview(existingView)
                         existingView.removeFromSuperview()
@@ -376,12 +226,12 @@ class TaskbarView: NSView {
         }
     }
     
-    private func createWindowView(for info: WindowInfo) -> WindowItemView {
+    private func createWindowView(for model: WindowModel) -> WindowItemView {
         return WindowItemView(
-            info: info,
-            onClick: { [weak self] in self?.windowActionCallback?(info, .toggle) },
-            onRightClick: { [weak self] v in self?.showContextMenu(for: info, in: v) },
-            onHover: { [weak self] h in self?.handleHover(pid: info.pid, hovering: h) }
+            model: model,
+            onClick: { [weak self] in self?.windowActionCallback?(model, .toggle) },
+            onRightClick: { [weak self] v in self?.showContextMenu(for: model, in: v) },
+            onHover: { [weak self] h in self?.handleHover(pid: model.pid, hovering: h) }
         )
     }
     
@@ -391,17 +241,15 @@ class TaskbarView: NSView {
                 pending.cancel()
                 pendingRemovals.removeValue(forKey: pid)
             }
-            if !hoveredPids.contains(pid) {
-                hoveredPids.insert(pid)
-                render()
-            }
+            
+            onHoverChange?(pid, true)
         } else {
+            
             let item = DispatchWorkItem { [weak self] in
                 guard let self = self else { return }
                 if self.pendingRemovals[pid] != nil { 
-                    self.hoveredPids.remove(pid)
                     self.pendingRemovals.removeValue(forKey: pid)
-                    self.render()
+                    self.onHoverChange?(pid, false)
                 }
             }
             pendingRemovals[pid] = item
@@ -409,7 +257,7 @@ class TaskbarView: NSView {
         }
     }
     
-    private func showContextMenu(for info: WindowInfo, in view: NSView) {
+    private func showContextMenu(for model: WindowModel, in view: NSView) {
         let menu = NSMenu()
         menu.autoenablesItems = false
         
@@ -418,8 +266,8 @@ class TaskbarView: NSView {
         for i in 1...10 {
             let item = NSMenuItem(title: "\(i)", action: #selector(contextMenuHandler(_:)), keyEquivalent: "")
             item.target = self
-            item.representedObject = ["info": info, "action": WindowAction.reorder(i)]
-            if info.orderPriority == i {
+            item.representedObject = ["model": model, "action": WindowAction.reorder(i)]
+            if model.orderPriority == i {
                 item.state = .on
             }
             subMenu.addItem(item)
@@ -427,19 +275,19 @@ class TaskbarView: NSView {
         subMenu.addItem(NSMenuItem.separator())
         let defaultItem = NSMenuItem(title: "No order preference", action: #selector(contextMenuHandler(_:)), keyEquivalent: "")
         defaultItem.target = self
-        defaultItem.representedObject = ["info": info, "action": WindowAction.reorder(nil)]
-        if info.orderPriority == Int.max {
+        defaultItem.representedObject = ["model": model, "action": WindowAction.reorder(nil)]
+        if model.orderPriority == Int.max {
             defaultItem.state = .on
         }
         subMenu.addItem(defaultItem)
         reorderItem.submenu = subMenu
         menu.addItem(reorderItem)
         
-        let actions: [(String, WindowAction)] = [("Open", .open), ("Minimize", .minimize), ("Quit \(info.ownerName)", .quit)]
+        let actions: [(String, WindowAction)] = [("Open", .open), ("Minimize", .minimize), ("Quit \(model.ownerName)", .quit)]
         for (title, action) in actions {
             let item = NSMenuItem(title: title, action: #selector(contextMenuHandler(_:)), keyEquivalent: "")
             item.target = self
-            item.representedObject = ["info": info, "action": action]
+            item.representedObject = ["model": model, "action": action]
             menu.addItem(item)
         }
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.height + 8), in: view)
@@ -447,20 +295,8 @@ class TaskbarView: NSView {
     
     @objc private func contextMenuHandler(_ sender: NSMenuItem) {
         guard let dict = sender.representedObject as? [String: Any],
-              let info = dict["info"] as? WindowInfo,
+              let model = dict["model"] as? WindowModel,
               let action = dict["action"] as? WindowAction else { return }
-        windowActionCallback?(info, action)
-    }
-}
-
-enum WindowAction: Equatable {
-    case toggle, open, minimize, quit, reorder(Int?)
-    
-    static func == (lhs: WindowAction, rhs: WindowAction) -> Bool {
-        switch (lhs, rhs) {
-        case (.toggle, .toggle), (.open, .open), (.minimize, .minimize), (.quit, .quit): return true
-        case (.reorder(let a), .reorder(let b)): return a == b
-        default: return false
-        }
+        windowActionCallback?(model, action)
     }
 }
