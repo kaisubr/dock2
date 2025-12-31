@@ -1,8 +1,11 @@
 
 import Foundation
 
-public class WindowFilter {
-    public static func filterAndSort(windows: [WindowModel], config: DockConfig, hoveredPids: Set<Int32>) -> [WindowModel] {
+public class StandardWindowFilter: WindowFilter {
+    
+    public init() {}
+
+    public func filterAndSort(windows: [WindowModel], config: DockConfig, hoveredPids: Set<Int32>) -> [WindowModel] {
         let hideGhost = config.hideGhostWindows ?? true
         
         

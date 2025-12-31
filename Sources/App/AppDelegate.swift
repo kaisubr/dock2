@@ -8,24 +8,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var isManuallyHidden = false
     
-    
-    var windowProvider: WindowProvider!
-    var actionHandler: ActionHandler!
-    var configStore: ConfigStore!
-    
-    private var pendingResizes: Set<UInt32> = []
-    private let resizeLock = NSLock()
+    var dockService: DockService!
     private let dockVisibleHeight: CGFloat = 64
-    
-    
     private var hoveredPids: Set<Int32> = []
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let configStore = FileConfigStore()
+        let windowProvider = SystemWindowProvider(configStore: configStore, dockVisibleHeight: dockVisibleHeight)
+        let actionHandler = AXActionHandler(configStore: configStore)
+        let windowFilter = StandardWindowFilter()
         
-        let config = FileConfigStore()
-        self.configStore = config
-        self.windowProvider = SystemWindowProvider(configStore: config, dockVisibleHeight: dockVisibleHeight)
-        self.actionHandler = AXActionHandler(configStore: config)
+        self.dockService = DockService(
+            windowProvider: windowProvider,
+            configStore: configStore,
+            actionHandler: actionHandler,
+            windowFilter: windowFilter
+        )
         
         NSApp.setActivationPolicy(.accessory)
         setupStatusItem()
@@ -59,7 +57,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let toggleItem = NSMenuItem(title: toggleTitle, action: #selector(toggleVisibility), keyEquivalent: "h")
         menu.addItem(toggleItem)
         
-        let cfg = configStore.load()
+        let cfg = dockService.loadConfig()
         let hideGhost = cfg.hideGhostWindows ?? true
         
         let hideItem = NSMenuItem(title: "Hide ghost windows", action: #selector(toggleHideGhostWindows), keyEquivalent: "")
@@ -84,9 +82,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     @objc private func toggleHideGhostWindows() {
-        var cfg = configStore.load()
-        cfg.hideGhostWindows = !(cfg.hideGhostWindows ?? true)
-        configStore.save(cfg)
+        dockService.updateConfig { config in
+            config.hideGhostWindows = !(config.hideGhostWindows ?? true)
+        }
         updateMenu()
         refreshWindows()
     }
@@ -134,7 +132,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         taskbarView = TaskbarView(frame: window.contentView!.bounds)
         taskbarView.onHidePressed = { [weak self] in self?.toggleVisibility() }
         
-        
         taskbarView.onHoverChange = { [weak self] pid, isHovering in
             guard let self = self else { return }
             if isHovering {
@@ -154,65 +151,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func refreshWindows() {
         if isManuallyHidden { return }
         
-        
-        let allRawWindows = windowProvider.getWindows()
-        
-        
-        let cfg = configStore.load()
-        let filteredWindows = WindowFilter.filterAndSort(windows: allRawWindows, config: cfg, hoveredPids: hoveredPids)
-        
+        let filteredWindows = dockService.getVisibleWindows(hoveredPids: hoveredPids)
         
         let screen = NSScreen.main ?? NSScreen.screens.first!
         let screenHeight = screen.frame.height
-        let limitY = screenHeight - dockVisibleHeight
-        let dockRect = CGRect(x: 0, y: limitY, width: screen.frame.width, height: dockVisibleHeight)
-
+        let screenWidth = screen.frame.width
         
-        
-        
-        
-        for win in filteredWindows {
-            if !win.isMinimized, let rect = win.rect {
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                let winRect = CGRect(x: rect.x, y: rect.y, width: rect.width, height: rect.height)
-                
-                if winRect.intersects(dockRect) && winRect.minY < limitY {
-                    resizeLock.lock()
-                    let isPending = pendingResizes.contains(win.id)
-                    resizeLock.unlock()
-                    
-                    if !isPending {
-                        resizeLock.lock()
-                        pendingResizes.insert(win.id)
-                        resizeLock.unlock()
-                        
-                        actionHandler.constrainWindow(pid: win.pid, id: win.id, limitY: limitY)
-                        
-                        
-                        DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                            self?.resizeLock.lock()
-                            self?.pendingResizes.remove(win.id)
-                            self?.resizeLock.unlock()
-                        }
-                    }
-                }
-            }
-        }
-        
+        dockService.constrainWindows(
+            windows: filteredWindows,
+            screenHeight: Double(screenHeight),
+            screenWidth: Double(screenWidth),
+            dockHeight: Double(dockVisibleHeight)
+        )
         
         taskbarView.updateWindows(filteredWindows) { [weak self] model, action in
-            self?.actionHandler.perform(action, on: model)
-            
+            self?.dockService.perform(action, on: model)
             
             if case .reorder = action {
                 self?.refreshWindows()
