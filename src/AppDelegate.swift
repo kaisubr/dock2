@@ -48,6 +48,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let toggleTitle = isManuallyHidden ? "Show dock2" : "Hide dock2"
         let toggleItem = NSMenuItem(title: toggleTitle, action: #selector(toggleVisibility), keyEquivalent: "h")
         menu.addItem(toggleItem)
+        
+        let hideGhost = ConfigManager.shared.getHideGhostWindows()
+        let hideItem = NSMenuItem(title: "Hide ghost windows", action: #selector(toggleHideGhostWindows), keyEquivalent: "")
+        hideItem.state = hideGhost ? .on : .off
+        menu.addItem(hideItem)
+        
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit dock2", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         statusItem?.menu = menu
@@ -63,6 +69,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         
         animateWindowPosition()
+    }
+    
+    @objc private func toggleHideGhostWindows() {
+        let current = ConfigManager.shared.getHideGhostWindows()
+        ConfigManager.shared.setHideGhostWindows(!current)
+        updateMenu()
+        refreshWindows()
     }
     
     private func animateWindowPosition() {

@@ -8,6 +8,7 @@ struct AppConfig: Codable {
 
 struct DockConfig: Codable {
     var applicationConfig: [String: AppConfig] 
+    var hideGhostWindows: Bool?
 }
 
 class ConfigManager {
@@ -50,6 +51,15 @@ class ConfigManager {
         } else {
             config.applicationConfig.removeValue(forKey: info.configKey)
         }
+        save()
+    }
+    
+    func getHideGhostWindows() -> Bool {
+        return config.hideGhostWindows ?? true
+    }
+    
+    func setHideGhostWindows(_ value: Bool) {
+        config.hideGhostWindows = value
         save()
     }
 }

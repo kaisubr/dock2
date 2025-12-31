@@ -50,15 +50,17 @@ class WindowItemView: NSView {
     let info: WindowInfo
     private let onClick: () -> Void
     private let onRightClick: (NSView) -> Void
+    private let onHover: (Bool) -> Void
     private let iconView = NSImageView()
     private let ownerLabel = NSTextField(labelWithString: "")
     private let titleLabel = NSTextField(labelWithString: "")
     private var isHovered = false { didSet { updateBackground() } }
 
-    init(info: WindowInfo, onClick: @escaping () -> Void, onRightClick: @escaping (NSView) -> Void) {
+    init(info: WindowInfo, onClick: @escaping () -> Void, onRightClick: @escaping (NSView) -> Void, onHover: @escaping (Bool) -> Void) {
         self.info = info
         self.onClick = onClick
         self.onRightClick = onRightClick
+        self.onHover = onHover
         super.init(frame: .zero)
         setupUI()
         addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
@@ -110,8 +112,14 @@ class WindowItemView: NSView {
         layer?.backgroundColor = isHovered ? NSColor.white.withAlphaComponent(0.15).cgColor : (info.isMinimized ? NSColor.clear.cgColor : NSColor.white.withAlphaComponent(0.08).cgColor)
     }
     
-    override func mouseEntered(with event: NSEvent) { isHovered = true }
-    override func mouseExited(with event: NSEvent) { isHovered = false }
+    override func mouseEntered(with event: NSEvent) { 
+        isHovered = true 
+        onHover(true)
+    }
+    override func mouseExited(with event: NSEvent) { 
+        isHovered = false 
+        onHover(false)
+    }
     override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick() } }
     override func rightMouseDown(with event: NSEvent) { onRightClick(self) }
 }
@@ -127,7 +135,13 @@ class TaskbarView: NSView {
     private let rightButton = BarButton(icon: "chevron.right", width: 24, height: 20, iconSize: 10)
     private let hideButton = BarButton(icon: "chevron.down", width: 50, height: 20, iconSize: 14)
     
-    private var currentWindows: [WindowInfo] = []
+    private var allWindows: [WindowInfo] = []
+    private var displayedWindows: [WindowInfo] = []
+    private var hoveredPids: Set<Int32> = []
+    private var pendingRemovals: [Int32: DispatchWorkItem] = [:]
+    
+    private var windowActionCallback: ((WindowInfo, WindowAction) -> Void)?
+    
     private var layoutState: LayoutState = .expanded
     
     private var leadingConstraint: NSLayoutConstraint!
@@ -204,18 +218,15 @@ class TaskbarView: NSView {
             visualEffectView.leadingAnchor.constraint(equalTo: dockContainer.leadingAnchor),
             visualEffectView.trailingAnchor.constraint(equalTo: dockContainer.trailingAnchor),
             
-            
             scrollView.leadingAnchor.constraint(equalTo: dockContainer.leadingAnchor, constant: 10),
             scrollView.trailingAnchor.constraint(equalTo: separator.leadingAnchor, constant: -6),
             scrollView.topAnchor.constraint(equalTo: dockContainer.topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: dockContainer.bottomAnchor),
 
-            
             separator.trailingAnchor.constraint(equalTo: controlsStack.leadingAnchor, constant: -8),
             separator.centerYAnchor.constraint(equalTo: dockContainer.centerYAnchor),
             separator.widthAnchor.constraint(equalToConstant: 1),
             separator.heightAnchor.constraint(equalToConstant: 24),
-            
             
             controlsStack.trailingAnchor.constraint(equalTo: dockContainer.trailingAnchor, constant: -8),
             controlsStack.centerYAnchor.constraint(equalTo: dockContainer.centerYAnchor),
@@ -286,23 +297,60 @@ class TaskbarView: NSView {
     }
 
     func updateWindows(_ windows: [WindowInfo], onAction: @escaping (WindowInfo, WindowAction) -> Void) {
-        if currentWindows == windows { return }
-        currentWindows = windows
+        self.allWindows = windows
+        self.windowActionCallback = onAction
+        render()
+    }
+    
+    private func render() {
+        let hideGhost = ConfigManager.shared.getHideGhostWindows()
         
-        DispatchQueue.main.async {
+        let grouped = Dictionary(grouping: allWindows, by: { $0.pid })
+        var visibleIDs = Set<CGWindowID>()
+        
+        for (pid, appWindows) in grouped {
+            let isHovered = hoveredPids.contains(pid)
+            let hasTitledWindow = appWindows.contains { $0.hasTitle }
+            
+            for win in appWindows {
+                if isHovered {
+                    visibleIDs.insert(win.id)
+                } else {
+                    if hideGhost {
+                        if win.hasTitle {
+                            visibleIDs.insert(win.id)
+                        } else {
+                            if !hasTitledWindow {
+                                visibleIDs.insert(win.id)
+                            }
+                        }
+                    } else {
+                        visibleIDs.insert(win.id)
+                    }
+                }
+            }
+        }
+        
+        let targetWindows = allWindows.filter { visibleIDs.contains($0.id) }
+        
+        if displayedWindows == targetWindows { return }
+        displayedWindows = targetWindows
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             let existingViews = self.windowStack.arrangedSubviews.compactMap { $0 as? WindowItemView }
             for view in existingViews {
-                if !windows.contains(where: { $0.id == view.info.id }) {
+                if !self.displayedWindows.contains(where: { $0.id == view.info.id }) {
                     self.windowStack.removeArrangedSubview(view)
                     view.removeFromSuperview()
                 }
             }
             
-            for (index, info) in windows.enumerated() {
+            for (index, info) in self.displayedWindows.enumerated() {
                 let currentViews = self.windowStack.arrangedSubviews.compactMap { $0 as? WindowItemView }
                 if let existingView = currentViews.first(where: { $0.info.id == info.id }) {
                     if existingView.info != info {
-                        let newView = WindowItemView(info: info, onClick: { onAction(info, .toggle) }, onRightClick: { v in self.showContextMenu(for: info, in: v, onAction: onAction) })
+                        let newView = self.createWindowView(for: info)
                         self.windowStack.removeArrangedSubview(existingView)
                         existingView.removeFromSuperview()
                         if index < self.windowStack.arrangedSubviews.count {
@@ -317,7 +365,7 @@ class TaskbarView: NSView {
                         }
                     }
                 } else {
-                    let newView = WindowItemView(info: info, onClick: { onAction(info, .toggle) }, onRightClick: { v in self.showContextMenu(for: info, in: v, onAction: onAction) })
+                    let newView = self.createWindowView(for: info)
                     if index < self.windowStack.arrangedSubviews.count {
                         self.windowStack.insertArrangedSubview(newView, at: index)
                     } else {
@@ -328,7 +376,40 @@ class TaskbarView: NSView {
         }
     }
     
-    private func showContextMenu(for info: WindowInfo, in view: NSView, onAction: @escaping (WindowInfo, WindowAction) -> Void) {
+    private func createWindowView(for info: WindowInfo) -> WindowItemView {
+        return WindowItemView(
+            info: info,
+            onClick: { [weak self] in self?.windowActionCallback?(info, .toggle) },
+            onRightClick: { [weak self] v in self?.showContextMenu(for: info, in: v) },
+            onHover: { [weak self] h in self?.handleHover(pid: info.pid, hovering: h) }
+        )
+    }
+    
+    private func handleHover(pid: Int32, hovering: Bool) {
+        if hovering {
+            if let pending = pendingRemovals[pid] {
+                pending.cancel()
+                pendingRemovals.removeValue(forKey: pid)
+            }
+            if !hoveredPids.contains(pid) {
+                hoveredPids.insert(pid)
+                render()
+            }
+        } else {
+            let item = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                if self.pendingRemovals[pid] != nil { 
+                    self.hoveredPids.remove(pid)
+                    self.pendingRemovals.removeValue(forKey: pid)
+                    self.render()
+                }
+            }
+            pendingRemovals[pid] = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: item)
+        }
+    }
+    
+    private func showContextMenu(for info: WindowInfo, in view: NSView) {
         let menu = NSMenu()
         menu.autoenablesItems = false
         
@@ -337,7 +418,7 @@ class TaskbarView: NSView {
         for i in 1...10 {
             let item = NSMenuItem(title: "\(i)", action: #selector(contextMenuHandler(_:)), keyEquivalent: "")
             item.target = self
-            item.representedObject = ["info": info, "action": WindowAction.reorder(i), "callback": onAction]
+            item.representedObject = ["info": info, "action": WindowAction.reorder(i)]
             if info.orderPriority == i {
                 item.state = .on
             }
@@ -346,7 +427,7 @@ class TaskbarView: NSView {
         subMenu.addItem(NSMenuItem.separator())
         let defaultItem = NSMenuItem(title: "No order preference", action: #selector(contextMenuHandler(_:)), keyEquivalent: "")
         defaultItem.target = self
-        defaultItem.representedObject = ["info": info, "action": WindowAction.reorder(nil), "callback": onAction]
+        defaultItem.representedObject = ["info": info, "action": WindowAction.reorder(nil)]
         if info.orderPriority == Int.max {
             defaultItem.state = .on
         }
@@ -358,7 +439,7 @@ class TaskbarView: NSView {
         for (title, action) in actions {
             let item = NSMenuItem(title: title, action: #selector(contextMenuHandler(_:)), keyEquivalent: "")
             item.target = self
-            item.representedObject = ["info": info, "action": action, "callback": onAction]
+            item.representedObject = ["info": info, "action": action]
             menu.addItem(item)
         }
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.height + 8), in: view)
@@ -367,9 +448,8 @@ class TaskbarView: NSView {
     @objc private func contextMenuHandler(_ sender: NSMenuItem) {
         guard let dict = sender.representedObject as? [String: Any],
               let info = dict["info"] as? WindowInfo,
-              let action = dict["action"] as? WindowAction,
-              let callback = dict["callback"] as? (WindowInfo, WindowAction) -> Void else { return }
-        callback(info, action)
+              let action = dict["action"] as? WindowAction else { return }
+        windowActionCallback?(info, action)
     }
 }
 

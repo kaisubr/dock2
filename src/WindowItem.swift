@@ -10,6 +10,7 @@ struct WindowInfo: Equatable {
     let configKey: String 
     var isMinimized: Bool
     var orderPriority: Int = Int.max
+    let hasTitle: Bool
     
     init?(dict: [String: Any]) {
         guard let id = dict[kCGWindowNumber as String] as? CGWindowID,
@@ -23,7 +24,8 @@ struct WindowInfo: Equatable {
         self.ownerName = owner
         
         let rawTitle = dict[kCGWindowName as String] as? String ?? ""
-        self.title = rawTitle.isEmpty ? owner : rawTitle
+        self.hasTitle = !rawTitle.isEmpty
+        self.title = self.hasTitle ? rawTitle : owner
         self.isMinimized = false
         
         if let app = NSRunningApplication(processIdentifier: pid) {
@@ -42,6 +44,7 @@ struct WindowInfo: Equatable {
         return lhs.id == rhs.id && 
                lhs.isMinimized == rhs.isMinimized && 
                lhs.title == rhs.title && 
-               lhs.orderPriority == rhs.orderPriority
+               lhs.orderPriority == rhs.orderPriority &&
+               lhs.hasTitle == rhs.hasTitle
     }
 }
