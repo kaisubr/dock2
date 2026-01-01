@@ -59,10 +59,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         let cfg = dockService.loadConfig()
         let hideGhost = cfg.hideGhostWindows ?? true
+        let spaceAware = cfg.spaceAwareMinimizedWindows ?? true
         
         let hideItem = NSMenuItem(title: "Hide ghost windows", action: #selector(toggleHideGhostWindows), keyEquivalent: "")
         hideItem.state = hideGhost ? .on : .off
         menu.addItem(hideItem)
+
+        let spaceAwareItem = NSMenuItem(title: "Space-aware minimized windows", action: #selector(toggleSpaceAwareMinimizedWindows), keyEquivalent: "")
+        spaceAwareItem.state = spaceAware ? .on : .off
+        menu.addItem(spaceAwareItem)
         
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit Dock2", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
@@ -84,6 +89,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleHideGhostWindows() {
         dockService.updateConfig { config in
             config.hideGhostWindows = !(config.hideGhostWindows ?? true)
+        }
+        updateMenu()
+        refreshWindows()
+    }
+
+    @objc private func toggleSpaceAwareMinimizedWindows() {
+        dockService.updateConfig { config in
+            config.spaceAwareMinimizedWindows = !(config.spaceAwareMinimizedWindows ?? true)
         }
         updateMenu()
         refreshWindows()

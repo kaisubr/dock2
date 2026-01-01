@@ -2,9 +2,13 @@
 import AppKit
 import CoreGraphics
 
+@_silgen_name("CGSMainConnectionID") private func CGSMainConnectionID() -> Int32
+@_silgen_name("CGSGetActiveSpace") private func CGSGetActiveSpace(_ cid: Int32) -> Int
+
 public class SystemWindowProvider: WindowProvider {
     private let configStore: ConfigStore
     private let dockVisibleHeight: CGFloat
+    private var windowSpaceCache: [UInt32: Int] = [:]
     
     public init(configStore: ConfigStore, dockVisibleHeight: CGFloat) {
         self.configStore = configStore
@@ -12,13 +16,28 @@ public class SystemWindowProvider: WindowProvider {
     }
     
     public func getWindows() -> [WindowModel] {
+        let config = configStore.load()
+        
+        let isSpaceAware = config.spaceAwareMinimizedWindows ?? true
+        
+        let currentSpaceID = CGSGetActiveSpace(CGSMainConnectionID())
+        
         let onScreenOptions: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
         let onScreenList = CGWindowListCopyWindowInfo(onScreenOptions, kCGNullWindowID) as? [[String: Any]] ?? []
         
         let onScreenIDs = Set(onScreenList.compactMap { $0[kCGWindowNumber as String] as? UInt32 })
         
+        
+        for id in onScreenIDs {
+            windowSpaceCache[id] = currentSpaceID
+        }
+
         let allOptions: CGWindowListOption = [.excludeDesktopElements, .optionAll]
         guard let allWindows = CGWindowListCopyWindowInfo(allOptions, kCGNullWindowID) as? [[String: Any]] else { return [] }
+        
+        
+        let allWindowIDs = Set(allWindows.compactMap { $0[kCGWindowNumber as String] as? UInt32 })
+        windowSpaceCache = windowSpaceCache.filter { allWindowIDs.contains($0.key) }
         
         let currentPID = ProcessInfo.processInfo.processIdentifier
         
@@ -32,22 +51,26 @@ public class SystemWindowProvider: WindowProvider {
             let isOnCurrentSpace = onScreenIDs.contains(id)
             let isMinimized = !isOnCurrentSpace && isWindowMinimized(pid: pid, id: id)
             
-            
             if !isOnCurrentSpace && !isMinimized {
                 return nil
+            }
+            
+            
+            if isMinimized && isSpaceAware {
+                if let cachedSpace = windowSpaceCache[id], cachedSpace != currentSpaceID {
+                    return nil
+                }
             }
             
             let rawTitle = dict[kCGWindowName as String] as? String ?? ""
             let hasTitle = !rawTitle.isEmpty
             let title = hasTitle ? rawTitle : ownerName
             
-            
             var rect: WindowRect? = nil
             if let boundsDict = dict[kCGWindowBounds as String] as? [String: Any],
                let cgRect = CGRect(dictionaryRepresentation: boundsDict as CFDictionary) {
                 rect = WindowRect(x: Double(cgRect.origin.x), y: Double(cgRect.origin.y), width: Double(cgRect.width), height: Double(cgRect.height))
             }
-            
             
             let bundleID: String
             if let app = NSRunningApplication(processIdentifier: pid) {
@@ -71,7 +94,6 @@ public class SystemWindowProvider: WindowProvider {
             )
         }
     }
-    
     
     @_silgen_name("_AXUIElementGetWindow")
     private func _AXUIElementGetWindow(_ element: AXUIElement, _ identifier: UnsafeMutablePointer<CGWindowID>) -> AXError

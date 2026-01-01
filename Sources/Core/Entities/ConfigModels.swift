@@ -14,9 +14,11 @@ public struct AppConfig: Codable {
 public struct DockConfig: Codable {
     public var applicationConfig: [String: AppConfig]
     public var hideGhostWindows: Bool?
+    public var spaceAwareMinimizedWindows: Bool?
     
-    public init(applicationConfig: [String: AppConfig], hideGhostWindows: Bool? = nil) {
+    public init(applicationConfig: [String: AppConfig], hideGhostWindows: Bool? = nil, spaceAwareMinimizedWindows: Bool? = nil) {
         self.applicationConfig = applicationConfig
         self.hideGhostWindows = hideGhostWindows
+        self.spaceAwareMinimizedWindows = spaceAwareMinimizedWindows
     }
 }
